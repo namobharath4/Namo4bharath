@@ -1,0 +1,6 @@
+{
+  "name": "YUKTI",
+  "description": "Your Agriculture Knowledge & Utility Technology Interface connecting farmers, agri companies, and equipment providers.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

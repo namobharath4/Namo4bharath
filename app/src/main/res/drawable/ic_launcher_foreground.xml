@@ -1,0 +1,36 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Stylized Y with Tech Network & Agricultural Leaf -->
+    <!-- Central stem and fork -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M51,78 L57,78 L57,56 L69,38 L62,34 L54,47 L46,34 L39,38 L51,56 Z" />
+    <!-- Left Leaf Wing -->
+    <path
+        android:fillColor="#81C784"
+        android:pathData="M54,49 C42,46 32,38 33,26 C45,26 53,35 54,49 Z" />
+    <!-- Right Leaf Wing -->
+    <path
+        android:fillColor="#A5D6A7"
+        android:pathData="M54,49 C66,46 76,38 75,26 C63,26 55,35 54,49 Z" />
+    <!-- Golden Agricultural Technology Nodes -->
+    <path
+        android:fillColor="#FDD835"
+        android:pathData="M54,23 A4,4 0 1,1 54,15 A4,4 0 1,1 54,23 Z" />
+    <path
+        android:fillColor="#FFF59D"
+        android:pathData="M33,26 A3,3 0 1,1 33,20 A3,3 0 1,1 33,26 Z" />
+    <path
+        android:fillColor="#FFF59D"
+        android:pathData="M75,26 A3,3 0 1,1 75,20 A3,3 0 1,1 75,26 Z" />
+    <!-- Tech Connecting circuit accents -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:pathData="M54,23 L54,34 M33,26 L42,34 M75,26 L66,34 M45,78 L63,78" />
+</vector>
