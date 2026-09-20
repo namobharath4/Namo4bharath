@@ -1,27 +1,8 @@
 import React, { useState } from 'react';
 import { ShieldCheck, CheckCircle2, XCircle, AlertTriangle, FileText, Search, UserCheck } from 'lucide-react';
-import { INITIAL_COMPANIES, INITIAL_WORKERS } from '../data/mockData';
 
 export default function AdminDeskPage() {
-  const [companies, setCompanies] = useState(INITIAL_COMPANIES);
-  const [pendingVerifications, setPendingVerifications] = useState([
-    {
-      id: 'pv-1',
-      type: 'Company License',
-      entityName: 'Nuziveedu Hybrid Seeds Ltd.',
-      regDoc: 'NSC/FCO/AP/2024/911',
-      date: 'Sep 19, 2026',
-      status: 'UNDER_REVIEW'
-    },
-    {
-      id: 'pv-2',
-      type: 'Drone Operator DGCA License',
-      entityName: 'Suresh Kumar (Kisan Drones)',
-      regDoc: 'DGCA-RPA-PILOT-88319',
-      date: 'Sep 18, 2026',
-      status: 'UNDER_REVIEW'
-    }
-  ]);
+  const [pendingVerifications, setPendingVerifications] = useState([]);
 
   const handleApprove = (id) => {
     setPendingVerifications(prev => prev.map(item => item.id === id ? { ...item, status: 'APPROVED' } : item));
@@ -49,73 +30,63 @@ export default function AdminDeskPage() {
           </div>
 
           <span className="badge badge-green" style={{ fontSize: '13px', padding: '8px 16px' }}>
-            ✓ System Integrity: Normal
+            ✓ System Status: Live & Operational
           </span>
-        </div>
-
-        {/* Overview Stats */}
-        <div className="grid-4" style={{ marginBottom: '32px' }}>
-          <div className="card">
-            <div style={{ fontSize: '12px', fontWeight: '700', color: '#64748b' }}>VERIFIED COMPANIES</div>
-            <div style={{ fontSize: '28px', fontWeight: '800', color: '#0284c7', marginTop: '4px' }}>128</div>
-          </div>
-          <div className="card">
-            <div style={{ fontSize: '12px', fontWeight: '700', color: '#64748b' }}>LICENSED OPERATORS</div>
-            <div style={{ fontSize: '28px', fontWeight: '800', color: '#15803d', marginTop: '4px' }}>1,490</div>
-          </div>
-          <div className="card">
-            <div style={{ fontSize: '12px', fontWeight: '700', color: '#64748b' }}>PENDING AUDITS</div>
-            <div style={{ fontSize: '28px', fontWeight: '800', color: '#ca8a04', marginTop: '4px' }}>2</div>
-          </div>
-          <div className="card">
-            <div style={{ fontSize: '12px', fontWeight: '700', color: '#64748b' }}>FCO CERTIFICATION PASS</div>
-            <div style={{ fontSize: '28px', fontWeight: '800', color: '#16a34a', marginTop: '4px' }}>99.2%</div>
-          </div>
         </div>
 
         {/* Pending Verification Triage */}
         <div className="card" style={{ marginBottom: '32px' }}>
           <h3 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '16px' }}>
-            Regulatory Compliance Queue
+            Regulatory Compliance & License Queue
           </h3>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {pendingVerifications.map((item) => (
-              <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', borderRadius: '10px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', flexWrap: 'wrap', gap: '12px' }}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                    <span className="badge badge-blue">{item.type}</span>
-                    <span style={{ fontSize: '12px', color: '#64748b' }}>Submitted: {item.date}</span>
+          {pendingVerifications.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '48px 20px', border: '1px dashed #cbd5e1', borderRadius: '10px' }}>
+              <CheckCircle2 size={42} color="#16a34a" style={{ margin: '0 auto 12px' }} />
+              <h4 style={{ fontSize: '16px', fontWeight: '700', color: '#0f172a' }}>All regulatory licenses up to date</h4>
+              <p style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>
+                New enterprise registrations, FCO licenses, and DGCA drone pilot submissions will appear here for verification.
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {pendingVerifications.map((item) => (
+                <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', borderRadius: '10px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', flexWrap: 'wrap', gap: '12px' }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                      <span className="badge badge-blue">{item.type}</span>
+                      <span style={{ fontSize: '12px', color: '#64748b' }}>Submitted: {item.date}</span>
+                    </div>
+                    <h4 style={{ fontSize: '16px', fontWeight: '700' }}>{item.entityName}</h4>
+                    <div style={{ fontSize: '13px', color: '#64748b' }}>Certificate/Doc Reference: <code>{item.regDoc}</code></div>
                   </div>
-                  <h4 style={{ fontSize: '16px', fontWeight: '700' }}>{item.entityName}</h4>
-                  <div style={{ fontSize: '13px', color: '#64748b' }}>Certificate/Doc Reference: <code>{item.regDoc}</code></div>
-                </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  {item.status === 'APPROVED' ? (
-                    <span className="badge badge-green" style={{ padding: '6px 14px' }}>✓ Approved & Licensed</span>
-                  ) : item.status === 'REJECTED' ? (
-                    <span className="badge" style={{ backgroundColor: '#fee2e2', color: '#dc2626', padding: '6px 14px' }}>✕ Rejected</span>
-                  ) : (
-                    <>
-                      <button 
-                        className="btn btn-sm btn-danger"
-                        onClick={() => handleReject(item.id)}
-                      >
-                        Reject
-                      </button>
-                      <button 
-                        className="btn btn-sm btn-primary"
-                        onClick={() => handleApprove(item.id)}
-                      >
-                        Approve License
-                      </button>
-                    </>
-                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {item.status === 'APPROVED' ? (
+                      <span className="badge badge-green" style={{ padding: '6px 14px' }}>✓ Approved & Licensed</span>
+                    ) : item.status === 'REJECTED' ? (
+                      <span className="badge" style={{ backgroundColor: '#fee2e2', color: '#dc2626', padding: '6px 14px' }}>✕ Rejected</span>
+                    ) : (
+                      <>
+                        <button 
+                          className="btn btn-sm btn-danger"
+                          onClick={() => handleReject(item.id)}
+                        >
+                          Reject
+                        </button>
+                        <button 
+                          className="btn btn-sm btn-primary"
+                          onClick={() => handleApprove(item.id)}
+                        >
+                          Approve License
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

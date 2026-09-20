@@ -1,237 +1,221 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
+import { dbService } from '../services/dbService';
 
 const AuthContext = createContext(null);
-
-const DEMO_PROFILES = {
-  farmer: {
-    id: 'f-demo-1',
-    email: 'farmer.demo@yukti.ag',
-    role: 'farmer',
-    name: 'Nageswara Rao',
-    phone: '+91 98480 23145',
-    farmName: 'Annapurna Organic Farm',
-    farmSizeAcres: 12.5,
-    primaryCrops: ['Paddy (BPT 5204)', 'Export Guntur Chilli', 'Black Gram'],
-    soilType: 'Rich Black Alluvial',
-    irrigationSource: 'Krishna Canal & Solar Borewell',
-    location: 'Tenali, Guntur District, AP',
-    isVerified: true
-  },
-  company: {
-    id: 'c-demo-1',
-    email: 'company.demo@yukti.ag',
-    role: 'company',
-    name: 'Coromandel Agritech Solutions',
-    companyName: 'Coromandel Agritech Solutions Ltd.',
-    registrationNumber: 'CIN-U01100AP2019PLC087',
-    licenseNumber: 'FCO/AP/GNT/2023/8821',
-    companyType: 'Agrochemicals, Bio-inputs & Tech Services',
-    contactPerson: 'K. Srinivasa Murthy (Zonal Manager)',
-    website: 'https://coromandel.ag',
-    location: 'Secunderabad & Guntur, AP',
-    isVerified: true
-  },
-  skilled_worker: {
-    id: 'w-demo-1',
-    email: 'worker.demo@yukti.ag',
-    role: 'skilled_worker',
-    name: 'Ramesh Reddy',
-    phone: '+91 94401 58210',
-    serviceType: 'skill_and_tool',
-    skills: ['Tractor Operator', 'Rotavator Specialist', 'Laser Land Leveling', 'Paddy Puddling'],
-    experienceYears: 7,
-    dailyRate: 1800,
-    hourlyRate: 250,
-    toolsOwned: ['Mahindra 575 DI Tractor', 'Shaktiman 7ft Rotavator'],
-    serviceRadiusKm: 35,
-    rating: 4.9,
-    reviewsCount: 38,
-    completedJobs: 64,
-    availabilityStatus: 'available',
-    location: 'Tenali, Guntur, AP',
-    isVerified: true
-  },
-  admin: {
-    id: 'adm-demo-1',
-    email: 'admin.desk@yukti.gov.in',
-    role: 'admin',
-    name: 'District Agronomy Officer',
-    deskName: 'Official Regulatory & Certification Cell',
-    department: 'Department of Agriculture & Farmers Welfare',
-    location: 'AP Secretariat / Guntur Collectorate',
-    isVerified: true
-  }
-};
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Initialize session from Supabase or persistent local state
+  // Synchronize user and profile on mount & auth changes
   useEffect(() => {
-    async function initAuth() {
+    let isMounted = true;
+
+    async function loadUserSession() {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        
+        if (!isMounted) return;
+
         if (session?.user) {
-          // Fetch user profile from Supabase profiles table
-          const { data: userProfile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('user_id', session.user.id)
-            .single();
-
+          setUser(session.user);
+          const userProfile = await dbService.getProfile(session.user.id);
+          
+          if (!isMounted) return;
           if (userProfile) {
-            setUser(session.user);
             setProfile(userProfile);
-            setLoading(false);
-            return;
+          } else {
+            // Build profile from user metadata if profile row isn't yet created
+            const meta = session.user.user_metadata || {};
+            const initialProfile = {
+              user_id: session.user.id,
+              email: session.user.email,
+              role: meta.role || 'farmer',
+              name: meta.full_name || session.user.email?.split('@')[0] || 'User',
+              full_name: meta.full_name || session.user.email?.split('@')[0] || 'User',
+              phone: meta.phone || '',
+              location: meta.location || meta.district || 'Guntur, Andhra Pradesh',
+              district: meta.district || 'Guntur',
+              state: meta.state || 'Andhra Pradesh',
+              is_verified: false
+            };
+            setProfile(initialProfile);
+            await dbService.updateProfile(session.user.id, initialProfile);
           }
-        }
-
-        // Check local persisted session fallback
-        const savedSession = localStorage.getItem('yukti_user_session');
-        if (savedSession) {
-          const parsed = JSON.parse(savedSession);
-          setUser(parsed);
-          setProfile(parsed);
-        }
-      } catch (err) {
-        console.warn('Supabase auth initialization fallback:', err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    initAuth();
-
-    // Listen for Supabase auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
-        const { data: userProfile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('user_id', session.user.id)
-          .single();
-
-        setUser(session.user);
-        setProfile(userProfile || { id: session.user.id, email: session.user.email, role: 'farmer' });
-      } else if (event === 'SIGNED_OUT') {
-        const savedSession = localStorage.getItem('yukti_user_session');
-        if (!savedSession) {
+        } else {
           setUser(null);
           setProfile(null);
         }
+      } catch (err) {
+        console.warn('Supabase session load:', err.message);
+      } finally {
+        if (isMounted) setLoading(false);
       }
+    }
+
+    loadUserSession();
+
+    // Listen for real auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!isMounted) return;
+
+      if (session?.user) {
+        setUser(session.user);
+        const userProfile = await dbService.getProfile(session.user.id);
+        const meta = session.user.user_metadata || {};
+        const activeProfile = userProfile || {
+          user_id: session.user.id,
+          email: session.user.email,
+          role: meta.role || 'farmer',
+          name: meta.full_name || session.user.email?.split('@')[0] || 'User',
+          full_name: meta.full_name || session.user.email?.split('@')[0] || 'User',
+          phone: meta.phone || '',
+          location: meta.location || 'Guntur, Andhra Pradesh',
+          is_verified: false
+        };
+        setProfile(activeProfile);
+      } else {
+        setUser(null);
+        setProfile(null);
+      }
+      setLoading(false);
     });
 
     return () => {
+      isMounted = false;
       subscription?.unsubscribe();
     };
   }, []);
 
-  // Role-specific sign-in with Supabase + fallback
-  const login = async (email, password, expectedRole) => {
+  // Real Supabase Email/Password Login
+  const login = async (email, password, expectedRole = null) => {
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: email.trim(),
         password,
       });
 
       if (error) {
-        // If Supabase credentials don't exist yet on remote or network fails,
-        // provide a clean role-validated fallback so testing is never blocked
-        if (email.includes('demo') || email.includes('test')) {
-          const demoUser = DEMO_PROFILES[expectedRole] || DEMO_PROFILES.farmer;
-          setUser(demoUser);
-          setProfile(demoUser);
-          localStorage.setItem('yukti_user_session', JSON.stringify(demoUser));
-          return { success: true, user: demoUser };
+        return { success: false, error: error.message };
+      }
+
+      if (data?.session?.user) {
+        const u = data.session.user;
+        setUser(u);
+
+        // Fetch database profile
+        let userProfile = await dbService.getProfile(u.id);
+        const meta = u.user_metadata || {};
+        const resolvedRole = userProfile?.role || meta.role || expectedRole || 'farmer';
+
+        if (!userProfile) {
+          userProfile = {
+            user_id: u.id,
+            email: u.email,
+            role: resolvedRole,
+            name: meta.full_name || u.email?.split('@')[0] || 'User',
+            full_name: meta.full_name || u.email?.split('@')[0] || 'User',
+            phone: meta.phone || '',
+            location: meta.location || 'Guntur, Andhra Pradesh',
+            is_verified: false
+          };
+          await dbService.updateProfile(u.id, userProfile);
         }
-        throw error;
+
+        setProfile(userProfile);
+        return { success: true, user: userProfile };
       }
 
-      if (data?.session) {
-        // Fetch role from Supabase
-        const { data: userProfile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('user_id', data.session.user.id)
-          .single();
-
-        const activeProfile = userProfile || {
-          id: data.session.user.id,
-          email: data.session.user.email,
-          role: expectedRole,
-          name: email.split('@')[0],
-        };
-
-        setUser(data.session.user);
-        setProfile(activeProfile);
-        localStorage.setItem('yukti_user_session', JSON.stringify(activeProfile));
-        return { success: true, user: activeProfile };
-      }
-      throw new Error('No session returned.');
+      return { success: false, error: 'No active session established.' };
     } catch (err) {
-      return { success: false, error: err.message };
+      return { success: false, error: err.message || 'Login failed.' };
     }
   };
 
-  // Role-specific signup with Supabase
-  const signUp = async ({ email, password, role, fullName, metadata = {} }) => {
+  // Real Supabase Email/Password Registration
+  const signUp = async ({ email, password, role = 'farmer', fullName, metadata = {} }) => {
     try {
+      const trimmedEmail = email.trim();
       const { data, error } = await supabase.auth.signUp({
-        email,
+        email: trimmedEmail,
         password,
         options: {
           data: {
-            role: role,
+            role,
             full_name: fullName,
             ...metadata
           }
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        return { success: false, error: error.message };
+      }
 
-      // In case session exists immediately or email confirmation is required
+      const createdUser = data?.user;
+      if (createdUser) {
+        // Initialize real profile record
+        const newProfile = {
+          user_id: createdUser.id,
+          email: trimmedEmail,
+          role,
+          name: fullName || trimmedEmail.split('@')[0],
+          full_name: fullName || trimmedEmail.split('@')[0],
+          phone: metadata.phone || '',
+          location: metadata.location || 'Guntur, Andhra Pradesh',
+          district: metadata.district || 'Guntur',
+          state: metadata.state || 'Andhra Pradesh',
+          farm_name: metadata.farm_name || '',
+          farm_size_acres: metadata.farm_size_acres || null,
+          company_name: metadata.company_name || '',
+          registration_number: metadata.registration_number || '',
+          license_number: metadata.license_number || '',
+          skills: metadata.skills || [],
+          tools_owned: metadata.tools_owned || [],
+          daily_rate: metadata.daily_rate || null,
+          is_verified: false,
+          created_at: new Date().toISOString()
+        };
+
+        await dbService.updateProfile(createdUser.id, newProfile);
+        if (data.session) {
+          setUser(createdUser);
+          setProfile(newProfile);
+        }
+      }
+
       return {
         success: true,
         session: data?.session,
-        user: data?.user,
+        user: createdUser,
         requiresEmailConfirmation: !data?.session
       };
     } catch (err) {
-      return { success: false, error: err.message };
+      return { success: false, error: err.message || 'Registration failed.' };
     }
   };
 
-  // Instant 1-Click Demo Login Preset for fast evaluation
-  const loginAsDemo = (roleKey) => {
-    const demoProfile = DEMO_PROFILES[roleKey] || DEMO_PROFILES.farmer;
-    setUser(demoProfile);
-    setProfile(demoProfile);
-    localStorage.setItem('yukti_user_session', JSON.stringify(demoProfile));
-    return demoProfile;
+  // Update profile
+  const updateProfile = async (updates) => {
+    if (!user) return null;
+    const updated = await dbService.updateProfile(user.id, updates);
+    setProfile(prev => ({ ...prev, ...updated }));
+    return updated;
   };
 
+  // Real Supabase Logout
   const logout = async () => {
     try {
       await supabase.auth.signOut();
     } catch (err) {
-      console.warn('Signout error:', err);
+      console.warn('SignOut exception:', err.message);
     }
     setUser(null);
     setProfile(null);
-    localStorage.removeItem('yukti_user_session');
-    window.location.hash = '#/';
   };
 
-  const switchRole = (newRole) => {
-    loginAsDemo(newRole);
-  };
+  const currentRole = profile?.role || user?.user_metadata?.role || null;
 
   return (
     <AuthContext.Provider
@@ -242,10 +226,9 @@ export function AuthProvider({ children }) {
         login,
         signUp,
         logout,
-        loginAsDemo,
-        switchRole,
+        updateProfile,
         isAuthenticated: !!user,
-        currentRole: profile?.role || user?.role || null,
+        currentRole
       }}
     >
       {children}

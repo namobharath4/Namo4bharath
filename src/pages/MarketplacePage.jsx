@@ -1,142 +1,293 @@
-import React, { useState } from 'react';
-import { Search, MapPin, Tractor, CheckCircle, PlusCircle, Wrench } from 'lucide-react';
-import { INITIAL_EQUIPMENT } from '../data/mockData';
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { dbService } from '../services/dbService';
+import { 
+  Tractor, 
+  Search, 
+  MapPin, 
+  PlusCircle, 
+  CheckCircle2, 
+  ShieldCheck, 
+  Filter,
+  MessageSquare,
+  Sparkles
+} from 'lucide-react';
 
-export default function MarketplacePage({ onOpenEquipmentModal, onOpenMessage }) {
-  const [searchTerm, setSearchTerm] = useState('');
+export default function MarketplacePage({ onOpenEquipmentModal, onOpenAuth, onOpenMessage }) {
+  const { user, isAuthenticated } = useAuth();
+
+  const [equipmentList, setEquipmentList] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Filters
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [locationSearch, setLocationSearch] = useState('');
   const [operatorOnly, setOperatorOnly] = useState(false);
 
-  const filteredEquipment = INITIAL_EQUIPMENT.filter(eq => {
-    const matchesSearch = eq.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          eq.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          eq.specs.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === 'all' || eq.category.toLowerCase() === selectedCategory.toLowerCase();
-    const matchesOperator = !operatorOnly || eq.operatorIncluded;
-    return matchesSearch && matchesCategory && matchesOperator;
-  });
+  useEffect(() => {
+    fetchEquipment();
+  }, [selectedCategory, operatorOnly]);
+
+  async function fetchEquipment() {
+    setLoading(true);
+    try {
+      const data = await dbService.getEquipment({
+        category: selectedCategory,
+        location: locationSearch,
+        operatorIncluded: operatorOnly
+      });
+      setEquipmentList(data);
+    } catch (err) {
+      console.warn('Equipment fetch error:', err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    fetchEquipment();
+  };
+
+  const categories = [
+    { id: 'all', label: 'All Machinery' },
+    { id: 'Tractor', label: 'Tractors' },
+    { id: 'Harvester', label: 'Combine Harvesters' },
+    { id: 'Drone', label: 'Agri Drones' },
+    { id: 'Sprayer', label: 'Sprayers' },
+    { id: 'Rotavator', label: 'Rotavators & Implements' },
+  ];
 
   return (
     <div style={{ padding: '36px 0 72px' }}>
       <div className="container">
         {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '28px', flexWrap: 'wrap', gap: '16px' }}>
+        <div style={styles.headerRow}>
           <div>
-            <span className="badge badge-yellow" style={{ marginBottom: '8px' }}>CUSTOM HIRING NETWORK</span>
-            <h1 style={{ fontSize: '32px', fontWeight: '800', color: '#0f172a' }}>
-              Agricultural Tools & Machinery Marketplace
-            </h1>
-            <p style={{ fontSize: '15px', color: '#64748b' }}>
-              Rent vetted tractors, combine harvesters, rotavators, and sprayers directly with or without certified operators.
+            <span className="badge badge-yellow" style={{ marginBottom: '8px' }}>MACHINERY & TOOLS FLEET</span>
+            <h1 style={styles.pageTitle}>Farm Equipment & Machinery Network</h1>
+            <p style={styles.pageSubtitle}>
+              Rent high-capacity agricultural machinery and precision implements with or without operators.
             </p>
           </div>
 
           <button 
-            className="btn btn-primary btn-lg"
-            style={{ backgroundColor: '#ca8a04', borderColor: '#ca8a04' }}
-            onClick={onOpenEquipmentModal}
+            className="btn btn-accent btn-lg"
+            onClick={() => {
+              if (isAuthenticated) onOpenEquipmentModal();
+              else onOpenAuth('login', 'skilled_worker');
+            }}
           >
             <PlusCircle size={20} />
             List Machinery for Rent
           </button>
         </div>
 
-        {/* Filter Controls */}
-        <div className="card" style={{ padding: '16px 20px', marginBottom: '32px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '16px', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        {/* Category Tabs */}
+        <div style={styles.categoryScroll}>
+          {categories.map((c) => (
+            <button 
+              key={c.id}
+              style={selectedCategory === c.id ? styles.categoryTabActive : styles.categoryTab}
+              onClick={() => setSelectedCategory(c.id)}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Location & Operator Filters */}
+        <div className="card" style={{ marginBottom: '32px', padding: '16px 20px' }}>
+          <form onSubmit={handleSearchSubmit} style={styles.filterBar}>
+            <div style={styles.searchBox}>
               <Search size={18} color="#64748b" />
               <input 
-                type="text" 
-                placeholder="Search tractor HP, drone sprayer, harvester, or district..." 
+                type="text"
+                placeholder="Search by district or city (e.g. Guntur, Krishna, Tenali)..."
                 className="form-input"
-                style={{ border: 'none', padding: 0 }}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                style={{ border: 'none', padding: '6px 0' }}
+                value={locationSearch}
+                onChange={(e) => setLocationSearch(e.target.value)}
               />
             </div>
 
-            <select 
-              className="form-select"
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-            >
-              <option value="all">All Machinery Categories</option>
-              <option value="Tractor">Tractors (40-65 HP)</option>
-              <option value="Harvester">Combine Harvesters</option>
-              <option value="Drone Sprayer">Agricultural Drones</option>
-              <option value="Rotavator">Rotavators & Tillers</option>
-            </select>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#334155', cursor: 'pointer' }}>
+                <input 
+                  type="checkbox"
+                  checked={operatorOnly}
+                  onChange={(e) => setOperatorOnly(e.target.checked)}
+                />
+                With Operator Included Only
+              </label>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
-              <input 
-                type="checkbox" 
-                checked={operatorOnly}
-                onChange={(e) => setOperatorOnly(e.target.checked)}
-                style={{ width: '16px', height: '16px' }}
-              />
-              Operator Included Only
-            </label>
-          </div>
+              <button type="submit" className="btn btn-primary">
+                Search Machinery
+              </button>
+            </div>
+          </form>
         </div>
 
         {/* Equipment Grid */}
-        <div className="grid-3">
-          {filteredEquipment.map((eq) => (
-            <div key={eq.id} className="card" style={{ display: 'flex', flexDirection: 'column' }}>
-              <div style={{ position: 'relative' }}>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '60px' }}>
+            <div style={{ fontSize: '16px', color: '#64748b' }}>Loading machinery directory...</div>
+          </div>
+        ) : equipmentList.length === 0 ? (
+          <div className="card" style={styles.emptyState}>
+            <Tractor size={48} color="#94a3b8" style={{ margin: '0 auto 16px' }} />
+            <h3 style={{ fontSize: '20px', fontWeight: '800', color: '#0f172a' }}>No equipment has been listed yet</h3>
+            <p style={{ color: '#64748b', fontSize: '15px', maxWidth: '440px', margin: '6px auto 20px' }}>
+              Have tractors, rotavators, harvesters, or agricultural drones? List them on YUKTI to earn rental income during peak acreage seasons.
+            </p>
+            <button 
+              className="btn btn-accent btn-lg"
+              onClick={() => {
+                if (isAuthenticated) onOpenEquipmentModal();
+                else onOpenAuth('login', 'skilled_worker');
+              }}
+            >
+              List Machinery for Rent
+            </button>
+          </div>
+        ) : (
+          <div className="grid-3">
+            {equipmentList.map((eq) => (
+              <div key={eq.id} className="card" style={{ display: 'flex', flexDirection: 'column', padding: '16px' }}>
                 <img 
-                  src={eq.image} 
-                  alt={eq.name} 
-                  style={{ width: '100%', height: '200px', objectFit: 'cover', borderRadius: '10px', marginBottom: '16px' }}
+                  src={eq.image_url || 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=500&auto=format&fit=crop&q=80'} 
+                  alt={eq.name}
+                  style={styles.imageBox}
                 />
-                <span className="badge badge-slate" style={{ position: 'absolute', top: '12px', left: '12px', backgroundColor: 'rgba(15, 23, 42, 0.8)', color: '#ffffff' }}>
-                  {eq.condition}
-                </span>
-              </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span className="badge badge-yellow">{eq.category}</span>
-                {eq.operatorIncluded ? (
-                  <span className="badge badge-green">✓ Certified Driver Included</span>
-                ) : (
-                  <span className="badge badge-slate">Self-Operated Rental</span>
-                )}
-              </div>
-
-              <h3 style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', marginBottom: '6px' }}>
-                {eq.name}
-              </h3>
-              
-              <p style={{ fontSize: '13px', color: '#475569', lineHeight: '1.5', marginBottom: '14px', flexGrow: 1 }}>
-                {eq.specs}
-              </p>
-
-              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '16px' }}>
-                <div><MapPin size={12} style={{ display: 'inline', marginRight: '4px' }} /> Location: {eq.location}</div>
-                <div>Owner: <strong>{eq.ownerName}</strong> (Verified Registry)</div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #e2e8f0', paddingTop: '14px' }}>
-                <div>
-                  <span style={{ fontSize: '20px', fontWeight: '800', color: '#15803d' }}>₹{eq.dailyRate.toLocaleString()}</span>
-                  <span style={{ fontSize: '12px', color: '#64748b' }}>/day</span>
-                  {eq.weeklyRate && (
-                    <div style={{ fontSize: '11px', color: '#64748b' }}>₹{eq.weeklyRate.toLocaleString()}/week</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '8px 0 4px' }}>
+                  <span className="badge badge-yellow">{eq.category}</span>
+                  {eq.operator_included ? (
+                    <span className="badge badge-green">Driver Included</span>
+                  ) : (
+                    <span className="badge badge-slate">Machine Only</span>
                   )}
                 </div>
 
-                <button 
-                  className="btn btn-primary"
-                  onClick={() => onOpenMessage(eq.ownerName)}
-                >
-                  Book Machine
-                </button>
+                <h3 style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', margin: '4px 0' }}>
+                  {eq.name}
+                </h3>
+
+                <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '8px' }}>
+                  <MapPin size={13} style={{ display: 'inline', marginRight: '4px' }} />
+                  {eq.location} • Year: {eq.model_year || 2023}
+                </div>
+
+                {eq.specs && (
+                  <p style={{ fontSize: '13px', color: '#475569', marginBottom: '16px', lineHeight: '1.4' }}>
+                    {eq.specs}
+                  </p>
+                )}
+
+                <div style={styles.cardFooter}>
+                  <div>
+                    <div style={{ fontSize: '20px', fontWeight: '900', color: '#15803d' }}>
+                      ₹{Number(eq.daily_rate || 0).toLocaleString()}
+                    </div>
+                    <span style={{ fontSize: '11px', color: '#64748b' }}>Rate per Day</span>
+                  </div>
+
+                  <button 
+                    className="btn btn-primary"
+                    onClick={() => onOpenMessage(eq.owner_name || 'Equipment Owner')}
+                  >
+                    <MessageSquare size={14} /> Book / Rent
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 }
+
+const styles = {
+  headerRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '28px',
+    flexWrap: 'wrap',
+    gap: '20px',
+  },
+  pageTitle: {
+    fontSize: '30px',
+    fontWeight: '900',
+    color: '#0f172a',
+    letterSpacing: '-0.5px',
+  },
+  pageSubtitle: {
+    fontSize: '15px',
+    color: '#64748b',
+    marginTop: '4px',
+  },
+  categoryScroll: {
+    display: 'flex',
+    gap: '8px',
+    overflowX: 'auto',
+    paddingBottom: '8px',
+    marginBottom: '20px',
+  },
+  categoryTab: {
+    padding: '8px 18px',
+    fontSize: '14px',
+    fontWeight: '600',
+    backgroundColor: '#ffffff',
+    border: '1px solid #e2e8f0',
+    borderRadius: '24px',
+    cursor: 'pointer',
+    color: '#475569',
+    whiteSpace: 'nowrap',
+  },
+  categoryTabActive: {
+    padding: '8px 18px',
+    fontSize: '14px',
+    fontWeight: '700',
+    backgroundColor: '#ca8a04',
+    border: '1px solid #ca8a04',
+    borderRadius: '24px',
+    cursor: 'pointer',
+    color: '#ffffff',
+    whiteSpace: 'nowrap',
+  },
+  filterBar: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '16px',
+    flexWrap: 'wrap',
+  },
+  searchBox: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    flex: 1,
+    minWidth: '260px',
+  },
+  emptyState: {
+    textAlign: 'center',
+    padding: '64px 20px',
+    border: '1px dashed #cbd5e1',
+  },
+  imageBox: {
+    width: '100%',
+    height: '180px',
+    objectFit: 'cover',
+    borderRadius: '10px',
+  },
+  cardFooter: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTop: '1px solid #f1f5f9',
+    paddingTop: '14px',
+    marginTop: 'auto',
+  }
+};

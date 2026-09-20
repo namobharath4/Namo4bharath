@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { X, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { dbService } from '../services/dbService';
 
 export default function JobPostModal({ isOpen, onClose, onJobCreated }) {
-  const { profile, currentRole } = useAuth();
+  const { user, profile, currentRole } = useAuth();
   
   const [title, setTitle] = useState('');
   const [crop, setCrop] = useState('Paddy');
@@ -17,45 +18,51 @@ export default function JobPostModal({ isOpen, onClose, onJobCreated }) {
   const [rateType, setRateType] = useState('per_day');
   const [urgency, setUrgency] = useState('medium');
   const [submitted, setSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    const newJob = {
-      id: 'j-' + Date.now(),
-      posterName: profile?.name || 'Authorized Member',
-      posterRole: currentRole || 'farmer',
-      title,
-      crop,
-      description,
-      location,
-      requiredSkills: skills.split(',').map(s => s.trim()),
-      requiredEquipment: equipment ? equipment.split(',').map(e => e.trim()) : [],
-      workersNeeded: Number(workersNeeded),
-      durationDays: Number(durationDays),
-      budget: Number(budget),
-      rateType,
-      urgency,
-      status: 'OPEN',
-      applicantsCount: 0,
-      createdAt: 'Just now'
-    };
+    setIsSubmitting(true);
 
-    if (onJobCreated) {
-      onJobCreated(newJob);
+    try {
+      const created = await dbService.createJob({
+        poster_id: user?.id,
+        poster_name: profile?.name || profile?.full_name || user?.email?.split('@')[0],
+        poster_role: currentRole || 'farmer',
+        title,
+        crop,
+        description,
+        location,
+        required_skills: skills,
+        required_equipment: equipment,
+        workers_needed: Number(workersNeeded),
+        duration_days: Number(durationDays),
+        budget: Number(budget),
+        rate_type: rateType,
+        urgency
+      });
+
+      if (onJobCreated) {
+        onJobCreated(created);
+      }
+      setSubmitted(true);
+      setTimeout(() => {
+        setSubmitted(false);
+        onClose();
+      }, 1200);
+    } catch (err) {
+      console.error('Failed to create job:', err);
+    } finally {
+      setIsSubmitting(false);
     }
-    setSubmitted(true);
-    setTimeout(() => {
-      setSubmitted(false);
-      onClose();
-    }, 1200);
   };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <button onClick={onClose} style={styles.closeBtn}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '540px' }}>
+        <button onClick={onClose} style={styles.closeBtn} aria-label="Close dialog">
           <X size={20} />
         </button>
 
@@ -204,8 +211,13 @@ export default function JobPostModal({ isOpen, onClose, onJobCreated }) {
               </div>
             </div>
 
-            <button type="submit" className="btn btn-primary btn-lg" style={{ width: '100%', marginTop: '8px' }}>
-              Publish Requirement
+            <button 
+              type="submit" 
+              disabled={isSubmitting}
+              className="btn btn-primary btn-lg" 
+              style={{ width: '100%', marginTop: '8px' }}
+            >
+              {isSubmitting ? 'Publishing...' : 'Publish Requirement'}
             </button>
           </form>
         )}

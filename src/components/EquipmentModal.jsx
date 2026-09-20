@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { X, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { dbService } from '../services/dbService';
 
 export default function EquipmentModal({ isOpen, onClose, onEquipmentAdded }) {
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
   
   const [name, setName] = useState('');
   const [category, setCategory] = useState('Tractor');
@@ -14,40 +15,52 @@ export default function EquipmentModal({ isOpen, onClose, onEquipmentAdded }) {
   const [location, setLocation] = useState(profile?.location || 'Guntur, AP');
   const [condition, setCondition] = useState('Excellent');
   const [submitted, setSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    const newEq = {
-      id: 'eq-' + Date.now(),
-      name,
-      category,
-      specs,
-      dailyRate: Number(dailyRate),
-      weeklyRate: Number(weeklyRate),
-      operatorIncluded,
-      location,
-      condition,
-      ownerName: profile?.name || 'Verified Member',
-      image: 'https://images.unsplash.com/photo-1592878904946-b3cd8ae243d0?w=500&auto=format&fit=crop&q=80',
-      isAvailable: true
-    };
+    setIsSubmitting(true);
 
-    if (onEquipmentAdded) {
-      onEquipmentAdded(newEq);
+    try {
+      const created = await dbService.createEquipment({
+        owner_id: user?.id,
+        owner_name: profile?.name || profile?.full_name || user?.email?.split('@')[0],
+        name,
+        category,
+        specs,
+        daily_rate: Number(dailyRate),
+        weekly_rate: weeklyRate ? Number(weeklyRate) : null,
+        operator_included: operatorIncluded,
+        location,
+        condition,
+        image_url: category === 'Harvester'
+          ? 'https://images.unsplash.com/photo-1592878904946-b3cd8ae243d0?w=500&auto=format&fit=crop&q=80'
+          : category === 'Drone Sprayer'
+          ? 'https://images.unsplash.com/photo-1508614589041-895b88991e3e?w=500&auto=format&fit=crop&q=80'
+          : 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=500&auto=format&fit=crop&q=80'
+      });
+
+      if (onEquipmentAdded) {
+        onEquipmentAdded(created);
+      }
+      setSubmitted(true);
+      setTimeout(() => {
+        setSubmitted(false);
+        onClose();
+      }, 1200);
+    } catch (err) {
+      console.error('Failed to create equipment:', err);
+    } finally {
+      setIsSubmitting(false);
     }
-    setSubmitted(true);
-    setTimeout(() => {
-      setSubmitted(false);
-      onClose();
-    }, 1200);
   };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <button onClick={onClose} style={styles.closeBtn}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '520px' }}>
+        <button onClick={onClose} style={styles.closeBtn} aria-label="Close dialog">
           <X size={20} />
         </button>
 
@@ -161,8 +174,13 @@ export default function EquipmentModal({ isOpen, onClose, onEquipmentAdded }) {
               </label>
             </div>
 
-            <button type="submit" className="btn btn-primary btn-lg" style={{ width: '100%' }}>
-              Publish Machine on Marketplace
+            <button 
+              type="submit" 
+              disabled={isSubmitting}
+              className="btn btn-primary btn-lg" 
+              style={{ width: '100%' }}
+            >
+              {isSubmitting ? 'Publishing...' : 'Publish Machine on Marketplace'}
             </button>
           </form>
         )}

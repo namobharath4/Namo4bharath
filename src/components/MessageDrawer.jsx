@@ -1,51 +1,52 @@
-import React, { useState } from 'react';
-import { X, Send, User, CheckCircle2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Send, User, MessageSquare } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { dbService } from '../services/dbService';
 
 export default function MessageDrawer({ isOpen, onClose, targetUser }) {
-  const { profile } = useAuth();
-  const [messages, setMessages] = useState([
-    {
-      id: 1,
-      sender: targetUser || 'Ramesh Reddy (Operator)',
-      text: 'Hello! I saw your requirement for paddy field tilling. My 47HP tractor with 7ft rotavator is available starting tomorrow.',
-      time: '10:30 AM',
-      isMe: false
-    }
-  ]);
+  const { user, profile } = useAuth();
+  const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const targetName = typeof targetUser === 'string' ? targetUser : (targetUser?.name || targetUser?.full_name || 'Agricultural Partner');
+  const targetId = typeof targetUser === 'object' ? (targetUser?.id || targetUser?.user_id) : targetName;
+
+  useEffect(() => {
+    if (isOpen && user) {
+      loadMessages();
+    }
+  }, [isOpen, user, targetName]);
+
+  async function loadMessages() {
+    setLoading(true);
+    try {
+      const data = await dbService.getMessages(user.id, targetId);
+      setMessages(data);
+    } catch (err) {
+      console.warn('Message load error:', err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   if (!isOpen) return null;
 
-  const handleSend = (e) => {
+  const handleSend = async (e) => {
     e.preventDefault();
-    if (!inputMessage.trim()) return;
+    if (!inputMessage.trim() || !user) return;
 
-    setMessages(prev => [
-      ...prev,
-      {
-        id: Date.now(),
-        sender: profile?.name || 'Me',
-        text: inputMessage,
-        time: 'Just now',
-        isMe: true
-      }
-    ]);
+    const text = inputMessage.trim();
     setInputMessage('');
 
-    // Simulated helpful response
-    setTimeout(() => {
-      setMessages(prev => [
-        ...prev,
-        {
-          id: Date.now() + 1,
-          sender: targetUser || 'Ramesh Reddy',
-          text: 'Understood! I will verify the field access road and confirm diesel terms. Thank you!',
-          time: 'Just now',
-          isMe: false
-        }
-      ]);
-    }, 1500);
+    const newMsg = await dbService.sendMessage({
+      senderId: user.id,
+      recipientId: targetId,
+      senderName: profile?.name || profile?.full_name || user.email?.split('@')[0],
+      content: text
+    });
+
+    setMessages(prev => [...prev, newMsg]);
   };
 
   return (
@@ -62,41 +63,59 @@ export default function MessageDrawer({ isOpen, onClose, targetUser }) {
               <User size={18} color="#15803d" />
             </div>
             <div>
-              <h3 style={{ fontSize: '16px', fontWeight: '800' }}>{targetUser || 'Agricultural Partner'}</h3>
-              <span style={{ fontSize: '12px', color: '#16a34a' }}>● Online & Ready</span>
+              <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a' }}>{targetName}</h3>
+              <span style={{ fontSize: '12px', color: '#16a34a' }}>Direct Agri-Partner Messaging</span>
             </div>
           </div>
-          <button onClick={onClose} style={styles.closeBtn}>
+          <button onClick={onClose} style={styles.closeBtn} aria-label="Close message window">
             <X size={20} />
           </button>
         </div>
 
         {/* Messages Body */}
         <div style={styles.messageList}>
-          {messages.map((m) => (
-            <div 
-              key={m.id}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: m.isMe ? 'flex-end' : 'flex-start',
-                marginBottom: '12px'
-              }}
-            >
-              <div style={m.isMe ? styles.myBubble : styles.theirBubble}>
-                {m.text}
-              </div>
-              <span style={{ fontSize: '10px', color: '#94a3b8', marginTop: '3px' }}>
-                {m.time}
-              </span>
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '30px', color: '#64748b', fontSize: '13px' }}>
+              Loading conversation history...
             </div>
-          ))}
+          ) : messages.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '60px 20px', color: '#64748b' }}>
+              <MessageSquare size={36} color="#cbd5e1" style={{ margin: '0 auto 8px' }} />
+              <div style={{ fontWeight: '700', fontSize: '15px', color: '#334155' }}>No messages yet</div>
+              <p style={{ fontSize: '13px', marginTop: '4px' }}>
+                Discuss farm requirements, rates, machinery availability, and field location.
+              </p>
+            </div>
+          ) : (
+            messages.map((m) => {
+              const isMe = m.sender_id === user?.id;
+              return (
+                <div 
+                  key={m.id}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: isMe ? 'flex-end' : 'flex-start',
+                    marginBottom: '12px'
+                  }}
+                >
+                  <div style={isMe ? styles.myBubble : styles.theirBubble}>
+                    {m.content}
+                  </div>
+                  <span style={{ fontSize: '10px', color: '#94a3b8', marginTop: '3px' }}>
+                    {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+              );
+            })
+          )}
         </div>
 
         {/* Input Bar */}
         <form onSubmit={handleSend} style={styles.inputBar}>
           <input 
             type="text"
+            required
             className="form-input"
             placeholder="Type message, field location, or rate offer..."
             value={inputMessage}
@@ -140,6 +159,8 @@ const styles = {
     flexGrow: 1,
     overflowY: 'auto',
     paddingRight: '6px',
+    display: 'flex',
+    flexDirection: 'column',
   },
   myBubble: {
     backgroundColor: '#15803d',

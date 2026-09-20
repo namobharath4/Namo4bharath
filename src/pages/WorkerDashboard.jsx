@@ -1,265 +1,500 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { dbService } from '../services/dbService';
 import { 
   Wrench, 
   Tractor, 
-  CheckCircle, 
-  Clock, 
+  PlusCircle, 
   MapPin, 
   Calendar, 
-  Star, 
+  CheckCircle2, 
+  Clock, 
   DollarSign, 
-  ShieldCheck, 
-  PlusCircle, 
+  Star, 
+  Briefcase, 
+  Edit2, 
+  Check, 
+  Send, 
   MessageSquare,
-  AlertCircle
+  Sparkles,
+  ShieldCheck
 } from 'lucide-react';
-import { INITIAL_JOBS, INITIAL_EQUIPMENT } from '../data/mockData';
 
-export default function WorkerDashboard({ onOpenMessage, onOpenEquipmentModal }) {
-  const { profile } = useAuth();
-  
-  const [availability, setAvailability] = useState('available');
-  const [serviceType, setServiceType] = useState('skill_and_tool'); // 'skill_only' | 'tool_only' | 'skill_and_tool'
-  const [dailyRate, setDailyRate] = useState(1800);
-  const [hourlyRate, setHourlyRate] = useState(250);
+export default function WorkerDashboard({ onOpenEquipmentModal, onOpenMessage }) {
+  const { user, profile, updateProfile } = useAuth();
 
-  // Incoming Job Booking Requests
-  const [incomingRequests, setIncomingRequests] = useState([
-    {
-      id: 'req-1',
-      farmerName: 'Venkat Reddy (Farmer)',
-      location: 'Duggirala, Guntur (12 km away)',
-      serviceNeeded: '8 Acres Paddy Land Rotavator Puddling',
-      dates: 'Tomorrow - 3 Days',
-      proposedPay: '₹5,400 total (₹1,800/day)',
-      status: 'PENDING'
-    },
-    {
-      id: 'req-2',
-      farmerName: 'K. Subba Rao (Chilli Cultivator)',
-      location: 'Pedakakani, Guntur (18 km away)',
-      serviceNeeded: 'Tractor Deep Furrowing & Bed Making',
-      dates: 'Sep 25 - 2 Days',
-      proposedPay: '₹3,600 total',
-      status: 'PENDING'
+  const [availableJobs, setAvailableJobs] = useState([]);
+  const [myApplications, setMyApplications] = useState([]);
+  const [myEquipment, setMyEquipment] = useState([]);
+  const [myReviews, setMyReviews] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Profile Edit State
+  const [isEditing, setIsEditing] = useState(false);
+  const [workerName, setWorkerName] = useState(profile?.name || profile?.full_name || 'Ramesh Reddy');
+  const [skillsStr, setSkillsStr] = useState(
+    Array.isArray(profile?.skills) ? profile.skills.join(', ') : 'Tractor Operator, Rotavator Specialist, Laser Land Leveler'
+  );
+  const [toolsStr, setToolsStr] = useState(
+    Array.isArray(profile?.tools_owned) ? profile.tools_owned.join(', ') : 'Mahindra 575 DI Tractor, Shaktiman 7ft Rotavator'
+  );
+  const [dailyRate, setDailyRate] = useState(profile?.daily_rate || 1800);
+  const [location, setLocation] = useState(profile?.location || 'Tenali, Guntur, AP');
+  const [availability, setAvailability] = useState(profile?.availability || 'available'); // 'available' | 'busy' | 'offline'
+
+  // Application Modal state
+  const [applyingJob, setApplyingJob] = useState(null);
+  const [pitch, setPitch] = useState('');
+  const [proposedRate, setProposedRate] = useState('');
+  const [applySuccess, setApplySuccess] = useState('');
+
+  useEffect(() => {
+    loadWorkerData();
+  }, [user]);
+
+  async function loadWorkerData() {
+    if (!user) return;
+    setLoading(true);
+    try {
+      const [jobs, apps, equip, reviews] = await Promise.all([
+        dbService.getJobs({ status: 'OPEN' }),
+        dbService.getMyApplications(user.id),
+        dbService.getMyEquipment(user.id),
+        dbService.getReviewsForUser(user.id)
+      ]);
+      setAvailableJobs(jobs);
+      setMyApplications(apps);
+      setMyEquipment(equip);
+      setMyReviews(reviews);
+    } catch (err) {
+      console.warn('Worker dashboard error:', err.message);
+    } finally {
+      setLoading(false);
     }
-  ]);
+  }
 
-  const handleAcceptRequest = (id) => {
-    setIncomingRequests(prev => prev.map(r => r.id === id ? { ...r, status: 'ACCEPTED' } : r));
+  const handleSaveProfile = async (e) => {
+    e.preventDefault();
+    await updateProfile({
+      name: workerName,
+      full_name: workerName,
+      skills: skillsStr.split(',').map(s => s.trim()).filter(Boolean),
+      tools_owned: toolsStr.split(',').map(s => s.trim()).filter(Boolean),
+      daily_rate: Number(dailyRate),
+      location,
+      availability
+    });
+    setIsEditing(false);
   };
 
-  const handleDeclineRequest = (id) => {
-    setIncomingRequests(prev => prev.filter(r => r.id !== id));
+  const handleToggleAvailability = async (newStatus) => {
+    setAvailability(newStatus);
+    await updateProfile({ availability: newStatus });
+  };
+
+  const handleApplySubmit = async (e) => {
+    e.preventDefault();
+    if (!applyingJob) return;
+
+    await dbService.applyToJob({
+      jobId: applyingJob.id,
+      workerId: user.id,
+      workerName: workerName,
+      pitch,
+      proposedRate: Number(proposedRate) || dailyRate
+    });
+
+    setApplySuccess(`Application sent for "${applyingJob.title}"!`);
+    setPitch('');
+    setApplyingJob(null);
+
+    // Refresh applications
+    const updatedApps = await dbService.getMyApplications(user.id);
+    setMyApplications(updatedApps);
+    setTimeout(() => setApplySuccess(''), 4000);
   };
 
   return (
     <div style={{ padding: '32px 0 64px' }}>
       <div className="container">
-        {/* Worker Top Banner */}
-        <div style={styles.workerBanner}>
+        {/* Top Worker Profile Banner */}
+        <div style={styles.topBanner}>
           <div>
             <div className="badge badge-yellow" style={{ marginBottom: '8px' }}>
-              <Wrench size={14} /> CERTIFIED OPERATOR & TOOL OWNER
+              <Wrench size={14} /> SKILLED LABOUR + TOOLS PORTAL
             </div>
-            <h1 style={styles.welcomeHeading}>
-              {profile?.name || 'Ramesh Reddy'}
+            <h1 style={styles.workerTitle}>
+              {workerName}
             </h1>
-            <div style={{ display: 'flex', gap: '16px', fontSize: '13px', color: '#64748b', marginTop: '4px' }}>
-              <span>Location: {profile?.location || 'Tenali, Guntur, AP'}</span>
-              <span style={{ color: '#ca8a04', fontWeight: '700' }}>★ 4.9 (38 Farm Reviews)</span>
-              <span style={{ color: '#16a34a', fontWeight: '700' }}>✓ 64 Jobs Completed</span>
+            <div style={styles.metaRow}>
+              <span><MapPin size={13} style={{ display: 'inline' }} /> {location}</span>
+              <span>•</span>
+              <span>Rate: ₹{dailyRate}/day</span>
+              <span>•</span>
+              <span style={{ 
+                color: availability === 'available' ? '#15803d' : '#ca8a04',
+                fontWeight: '700'
+              }}>
+                ● {availability === 'available' ? 'Available for Work' : availability === 'busy' ? 'Currently on Job' : 'Offline'}
+              </span>
             </div>
           </div>
 
-          {/* Availability Switch */}
-          <div style={styles.availabilityBox}>
-            <span style={{ fontSize: '12px', fontWeight: '700', color: '#64748b' }}>STATUS:</span>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             <button 
-              style={availability === 'available' ? styles.statusBtnActive : styles.statusBtn}
-              onClick={() => setAvailability('available')}
+              className="btn btn-accent"
+              onClick={onOpenEquipmentModal}
             >
-              <span style={{ color: '#16a34a' }}>●</span> Available Now
-            </button>
-            <button 
-              style={availability === 'busy' ? styles.statusBtnActive : styles.statusBtn}
-              onClick={() => setAvailability('busy')}
-            >
-              <span style={{ color: '#ca8a04' }}>●</span> Busy on Field
+              <Tractor size={18} /> List Machinery for Rent
             </button>
           </div>
         </div>
 
+        {applySuccess && (
+          <div className="badge badge-green" style={{ display: 'block', padding: '12px 16px', fontSize: '14px', marginBottom: '20px' }}>
+            ✓ {applySuccess}
+          </div>
+        )}
+
         {/* Dashboard Grid */}
         <div style={styles.dashboardGrid}>
-          {/* Left Column: Service Setup & Machinery Inventory */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            {/* Service Profile Configuration */}
+          {/* Left Column: Skills Showcase, Equipment Owned, Availability Toggle */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            {/* Professional Profile & Skills Card */}
             <div className="card">
-              <h3 style={styles.cardTitle}>⚙️ Service Configuration</h3>
-              <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '16px' }}>
-                How you provide service to farmers & companies.
-              </p>
-
-              <div className="form-group">
-                <label className="form-label">Service Provision Mode</label>
-                <select 
-                  className="form-select"
-                  value={serviceType}
-                  onChange={(e) => setServiceType(e.target.value)}
-                >
-                  <option value="skill_and_tool">🛠️ Skill + Equipment (Operator with Machine)</option>
-                  <option value="skill_only">👤 Skill Only (Driver/Technician without machine)</option>
-                  <option value="tool_only">🚜 Tool Only (Equipment Rental without operator)</option>
-                </select>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div className="form-group">
-                  <label className="form-label">Daily Rate (₹)</label>
-                  <input 
-                    type="number"
-                    className="form-input"
-                    value={dailyRate}
-                    onChange={(e) => setDailyRate(Number(e.target.value))}
-                  />
+              <div style={styles.cardHeader}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Wrench size={20} color="#ca8a04" />
+                  <h3 style={styles.cardTitle}>Skills & Fleet Showcase</h3>
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Hourly Rate (₹)</label>
-                  <input 
-                    type="number"
-                    className="form-input"
-                    value={hourlyRate}
-                    onChange={(e) => setHourlyRate(Number(e.target.value))}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* My Equipment & Tools Registry */}
-            <div className="card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <h3 style={styles.cardTitle}>🚜 My Tools & Machines</h3>
                 <button 
-                  className="btn btn-sm btn-outline-primary"
-                  onClick={onOpenEquipmentModal}
+                  className="btn btn-sm btn-secondary"
+                  onClick={() => setIsEditing(!isEditing)}
                 >
-                  + Add Tool
+                  <Edit2 size={13} /> {isEditing ? 'Cancel' : 'Edit'}
                 </button>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={styles.machineItem}>
+              {isEditing ? (
+                <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <div>
-                    <h5 style={{ fontSize: '14px', fontWeight: '700' }}>Mahindra 575 DI (47 HP)</h5>
-                    <span style={{ fontSize: '12px', color: '#64748b' }}>Model: 2023 • With Dual Clutch & Rotavator</span>
+                    <label style={styles.fieldLabel}>Operator / Technician Name</label>
+                    <input 
+                      type="text" 
+                      className="form-input" 
+                      value={workerName} 
+                      onChange={(e) => setWorkerName(e.target.value)} 
+                    />
                   </div>
-                  <span className="badge badge-green">Active on Rental</span>
-                </div>
+                  <div>
+                    <label style={styles.fieldLabel}>Specialized Skills (comma-separated)</label>
+                    <input 
+                      type="text" 
+                      className="form-input" 
+                      value={skillsStr} 
+                      onChange={(e) => setSkillsStr(e.target.value)} 
+                    />
+                  </div>
+                  <div>
+                    <label style={styles.fieldLabel}>Machinery & Implements Owned</label>
+                    <input 
+                      type="text" 
+                      className="form-input" 
+                      value={toolsStr} 
+                      onChange={(e) => setToolsStr(e.target.value)} 
+                    />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <div>
+                      <label style={styles.fieldLabel}>Daily Rate (₹)</label>
+                      <input 
+                        type="number" 
+                        className="form-input" 
+                        value={dailyRate} 
+                        onChange={(e) => setDailyRate(e.target.value)} 
+                      />
+                    </div>
+                    <div>
+                      <label style={styles.fieldLabel}>Location / Base</label>
+                      <input 
+                        type="text" 
+                        className="form-input" 
+                        value={location} 
+                        onChange={(e) => setLocation(e.target.value)} 
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={styles.fieldLabel}>Availability Status</label>
+                    <select 
+                      className="form-select"
+                      value={availability}
+                      onChange={(e) => setAvailability(e.target.value)}
+                    >
+                      <option value="available">Available for Bookings</option>
+                      <option value="busy">Busy (Currently on Job)</option>
+                      <option value="offline">Offline / Rest Period</option>
+                    </select>
+                  </div>
+                  <button type="submit" className="btn btn-sm btn-primary" style={{ backgroundColor: '#ca8a04', borderColor: '#ca8a04', marginTop: '6px' }}>
+                    <Check size={14} /> Save Profile
+                  </button>
+                </form>
+              ) : (
+                <div>
+                  <div style={{ marginBottom: '14px' }}>
+                    <span style={styles.specLabel}>What can you do? (Skills)</span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '6px' }}>
+                      {skillsStr.split(',').map((s, idx) => (
+                        <span key={idx} className="badge badge-yellow" style={{ fontSize: '11px' }}>
+                          {s.trim()}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
 
-                <div style={styles.machineItem}>
-                  <div>
-                    <h5 style={{ fontSize: '14px', fontWeight: '700' }}>Shaktiman 7ft Rotavator</h5>
-                    <span style={{ fontSize: '12px', color: '#64748b' }}>54 Boron Steel Blades • Prime Condition</span>
+                  <div style={{ marginBottom: '14px' }}>
+                    <span style={styles.specLabel}>What tools & machinery can you provide?</span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '6px' }}>
+                      {toolsStr.split(',').map((t, idx) => (
+                        <span key={idx} className="badge badge-green" style={{ fontSize: '11px' }}>
+                          <Tractor size={11} style={{ display: 'inline', marginRight: '4px' }} />
+                          {t.trim()}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                  <span className="badge badge-green">Ready</span>
+
+                  <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <span style={styles.specLabel}>Daily Wage Base</span>
+                      <div style={{ fontSize: '16px', fontWeight: '800', color: '#15803d' }}>₹{dailyRate} / day</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button 
+                        className={`btn btn-sm ${availability === 'available' ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => handleToggleAvailability('available')}
+                      >
+                        Available
+                      </button>
+                      <button 
+                        className={`btn btn-sm ${availability === 'busy' ? 'btn-accent' : 'btn-secondary'}`}
+                        onClick={() => handleToggleAvailability('busy')}
+                      >
+                        Busy
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* My Listed Machinery for Rent */}
+            <div className="card">
+              <div style={styles.cardHeader}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Tractor size={20} color="#15803d" />
+                  <h3 style={styles.cardTitle}>My Machinery for Rent</h3>
+                </div>
+                <button 
+                  className="btn btn-sm btn-secondary"
+                  onClick={onOpenEquipmentModal}
+                >
+                  <PlusCircle size={13} /> Add Machine
+                </button>
+              </div>
+
+              {myEquipment.length === 0 ? (
+                <div style={styles.emptyCard}>
+                  <Tractor size={32} color="#94a3b8" style={{ margin: '0 auto 8px' }} />
+                  <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '12px' }}>
+                    You haven't listed any machinery for farm rental yet.
+                  </p>
+                  <button className="btn btn-sm btn-accent" onClick={onOpenEquipmentModal}>
+                    List a Machine
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {myEquipment.map((eq) => (
+                    <div key={eq.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>{eq.name}</div>
+                        <div style={{ fontSize: '11px', color: '#64748b' }}>{eq.category} • {eq.location}</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '14px', fontWeight: '800', color: '#15803d' }}>₹{eq.daily_rate}/day</div>
+                        <span className="badge badge-green" style={{ fontSize: '10px' }}>Listed</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Client Reviews */}
+            <div className="card">
+              <div style={styles.cardHeader}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Star size={20} color="#ca8a04" />
+                  <h3 style={styles.cardTitle}>Verified Farmer Reviews</h3>
                 </div>
               </div>
+
+              {myReviews.length === 0 ? (
+                <div style={styles.emptyCard}>
+                  <Star size={32} color="#94a3b8" style={{ margin: '0 auto 8px' }} />
+                  <p style={{ fontSize: '13px', color: '#64748b' }}>
+                    No reviews yet. Complete your first farm booking to build your rating.
+                  </p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {myReviews.map((rev) => (
+                    <div key={rev.id} style={{ padding: '10px', backgroundColor: '#fefce8', borderRadius: '8px', border: '1px solid #fef08a' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                        <span style={{ fontWeight: '700', fontSize: '12px' }}>{rev.reviewer_name || 'Farmer'}</span>
+                        <span style={{ color: '#ca8a04', fontWeight: '800', fontSize: '12px' }}>{rev.rating} ★</span>
+                      </div>
+                      <p style={{ fontSize: '12px', color: '#334155' }}>"{rev.comment}"</p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Right Column: Incoming Booking Requests & Direct Inquiries */}
+          {/* Right Column: Matching Jobs & Applications Submitted */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            {/* Incoming Requests */}
+            {/* Open Agricultural Requirements (Live Feed) */}
             <div className="card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
                 <div>
-                  <h3 style={{ fontSize: '18px', fontWeight: '800' }}>Direct Field Booking Inquiries</h3>
-                  <span style={{ fontSize: '13px', color: '#64748b' }}>Farmers requesting your machinery or operator service.</span>
+                  <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a' }}>Matching Farm Requirements</h3>
+                  <span style={{ fontSize: '13px', color: '#64748b' }}>Acreage preparation, sowing, spraying, and harvesting jobs.</span>
                 </div>
+                <span className="badge badge-green">{availableJobs.length} Open Jobs</span>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                {incomingRequests.map((req) => (
-                  <div key={req.id} style={styles.requestCard}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div>
-                        <span className="badge badge-green" style={{ marginBottom: '4px' }}>{req.dates}</span>
-                        <h4 style={{ fontSize: '16px', fontWeight: '700', color: '#0f172a' }}>{req.serviceNeeded}</h4>
-                        <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>
-                          From <strong>{req.farmerName}</strong> • {req.location}
+              {availableJobs.length === 0 ? (
+                <div style={styles.emptyCard}>
+                  <Briefcase size={36} color="#94a3b8" style={{ margin: '0 auto 10px' }} />
+                  <h4 style={{ fontSize: '16px', fontWeight: '700', color: '#0f172a' }}>No open jobs matching right now</h4>
+                  <p style={{ fontSize: '13px', color: '#64748b', maxWidth: '380px', margin: '4px auto' }}>
+                    Keep your profile marked as "Available" to be notified when farmers in your district post requirements.
+                  </p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {availableJobs.map((job) => (
+                    <div key={job.id} style={styles.jobFeedCard}>
+                      <div style={{ flexGrow: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                          <span className="badge badge-green">{job.crop || 'Agriculture'}</span>
+                          <span className="badge badge-slate">{job.rate_type || 'per_day'}</span>
+                        </div>
+                        <h4 style={{ fontSize: '16px', fontWeight: '700', color: '#0f172a' }}>{job.title}</h4>
+                        <p style={{ fontSize: '13px', color: '#64748b', margin: '6px 0' }}>{job.description}</p>
+                        <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: '#475569', flexWrap: 'wrap' }}>
+                          <span><MapPin size={12} style={{ display: 'inline' }} /> {job.location}</span>
+                          <span>Budget: ₹{Number(job.budget || 0).toLocaleString()}</span>
+                          <span>Duration: {job.duration_days || 1} Days</span>
                         </div>
                       </div>
-                      <div style={{ fontSize: '16px', fontWeight: '800', color: '#15803d' }}>
-                        {req.proposedPay}
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '130px' }}>
+                        <button 
+                          className="btn btn-sm btn-primary"
+                          onClick={() => {
+                            setApplyingJob(job);
+                            setProposedRate(job.budget || dailyRate);
+                          }}
+                        >
+                          <Send size={13} /> Apply Now
+                        </button>
+                        <button 
+                          className="btn btn-sm btn-secondary"
+                          onClick={() => onOpenMessage(job.poster_name || 'Farmer')}
+                        >
+                          <MessageSquare size={13} /> Message
+                        </button>
                       </div>
                     </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', borderTop: '1px solid #e2e8f0', paddingTop: '12px' }}>
-                      <button 
-                        className="btn btn-sm btn-secondary"
-                        onClick={() => onOpenMessage(req.farmerName)}
-                      >
-                        <MessageSquare size={14} /> Message Farmer
-                      </button>
-
-                      {req.status === 'ACCEPTED' ? (
-                        <span className="badge badge-green" style={{ fontSize: '13px', padding: '6px 14px' }}>
-                          ✓ Booking Confirmed
-                        </span>
-                      ) : (
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button 
-                            className="btn btn-sm btn-danger"
-                            onClick={() => handleDeclineRequest(req.id)}
-                          >
-                            Decline
-                          </button>
-                          <button 
-                            className="btn btn-sm btn-primary"
-                            onClick={() => handleAcceptRequest(req.id)}
-                          >
-                            Accept Job
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
 
-            {/* Live Open Requirements Nearby */}
-            <div className="card">
-              <h3 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '4px' }}>Open Farm Requirements in Your Radius</h3>
-              <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '16px' }}>Apply with your rates and machine availability.</p>
+            {/* Application Pitch Modal/Drawer */}
+            {applyingJob && (
+              <div className="card" style={{ border: '2px solid #ca8a04', backgroundColor: '#fefce8' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <h4 style={{ fontSize: '16px', fontWeight: '800', color: '#854d0e' }}>
+                    Submit Proposal for: "{applyingJob.title}"
+                  </h4>
+                  <button className="btn btn-sm btn-secondary" onClick={() => setApplyingJob(null)}>
+                    Cancel
+                  </button>
+                </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {INITIAL_JOBS.slice(0, 2).map((job) => (
-                  <div key={job.id} style={styles.jobFeedRow}>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                        <span className="badge badge-green">{job.crop}</span>
-                        <span style={{ fontSize: '12px', color: '#64748b' }}>{job.location}</span>
-                      </div>
-                      <h4 style={{ fontSize: '15px', fontWeight: '700' }}>{job.title}</h4>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                      <div style={{ fontSize: '15px', fontWeight: '800', color: '#15803d' }}>
-                        ₹{job.budget.toLocaleString()}
-                      </div>
-                      <button 
-                        className="btn btn-sm btn-primary"
-                        onClick={() => onOpenMessage(job.posterName)}
-                      >
-                        Send Quotation
-                      </button>
-                    </div>
+                <form onSubmit={handleApplySubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div>
+                    <label style={styles.fieldLabel}>Your Proposed Rate (₹)</label>
+                    <input 
+                      type="number"
+                      required
+                      className="form-input"
+                      value={proposedRate}
+                      onChange={(e) => setProposedRate(e.target.value)}
+                    />
                   </div>
-                ))}
+                  <div>
+                    <label style={styles.fieldLabel}>Proposal / Message to Farm Owner</label>
+                    <textarea 
+                      required
+                      className="form-textarea"
+                      rows={3}
+                      placeholder="e.g. I have 7 years of tractor experience and can bring a 7ft rotavator to finish your 8 acres in 2 days..."
+                      value={pitch}
+                      onChange={(e) => setPitch(e.target.value)}
+                    />
+                  </div>
+                  <button type="submit" className="btn btn-primary" style={{ backgroundColor: '#ca8a04', borderColor: '#ca8a04' }}>
+                    Confirm & Send Application
+                  </button>
+                </form>
               </div>
+            )}
+
+            {/* My Submitted Applications */}
+            <div className="card">
+              <div style={styles.cardHeader}>
+                <h3 style={styles.cardTitle}>My Submitted Applications</h3>
+                <span className="badge badge-slate">{myApplications.length} Total</span>
+              </div>
+
+              {myApplications.length === 0 ? (
+                <div style={styles.emptyCard}>
+                  <Clock size={32} color="#94a3b8" style={{ margin: '0 auto 8px' }} />
+                  <p style={{ fontSize: '13px', color: '#64748b' }}>
+                    You have not submitted any applications yet. Apply to open farm requirements above.
+                  </p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {myApplications.map((app) => (
+                    <div key={app.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', borderRadius: '8px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', flexWrap: 'wrap', gap: '10px' }}>
+                      <div>
+                        <div style={{ fontSize: '14px', fontWeight: '700' }}>Job ID: {app.job_id?.slice(0, 8)}...</div>
+                        <div style={{ fontSize: '12px', color: '#64748b' }}>Proposed: ₹{Number(app.proposed_rate || 0).toLocaleString()} • "{app.pitch?.slice(0, 40)}..."</div>
+                      </div>
+                      <span className={`badge ${app.status === 'ACCEPTED' ? 'badge-green' : app.status === 'REJECTED' ? 'badge-red' : 'badge-yellow'}`}>
+                        {app.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -269,94 +504,80 @@ export default function WorkerDashboard({ onOpenMessage, onOpenEquipmentModal })
 }
 
 const styles = {
-  workerBanner: {
+  topBanner: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '28px',
+    marginBottom: '32px',
     backgroundColor: '#ffffff',
     padding: '24px 32px',
     borderRadius: '16px',
     border: '1px solid #e2e8f0',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
     flexWrap: 'wrap',
     gap: '20px',
   },
-  welcomeHeading: {
+  workerTitle: {
     fontSize: '26px',
-    fontWeight: '800',
+    fontWeight: '900',
     color: '#0f172a',
+    letterSpacing: '-0.5px',
   },
-  availabilityBox: {
+  metaRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
-    backgroundColor: '#f8fafc',
-    padding: '6px 12px',
-    borderRadius: '12px',
-    border: '1px solid #cbd5e1',
-  },
-  statusBtn: {
-    padding: '6px 12px',
-    border: 'none',
-    background: 'none',
-    borderRadius: '8px',
-    fontSize: '12px',
-    fontWeight: '600',
+    gap: '10px',
+    fontSize: '13px',
     color: '#64748b',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-  },
-  statusBtnActive: {
-    padding: '6px 12px',
-    border: 'none',
-    backgroundColor: '#ffffff',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-    borderRadius: '8px',
-    fontSize: '12px',
-    fontWeight: '700',
-    color: '#0f172a',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
+    marginTop: '6px',
+    flexWrap: 'wrap',
   },
   dashboardGrid: {
     display: 'grid',
-    gridTemplateColumns: '360px 1fr',
+    gridTemplateColumns: '1fr 2fr',
     gap: '24px',
+  },
+  cardHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '16px',
   },
   cardTitle: {
     fontSize: '16px',
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#0f172a',
-    marginBottom: '8px',
   },
-  machineItem: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '12px',
+  fieldLabel: {
+    display: 'block',
+    fontSize: '11px',
+    fontWeight: '700',
+    color: '#475569',
+    marginBottom: '3px',
+    textTransform: 'uppercase',
+  },
+  specLabel: {
+    fontSize: '11px',
+    color: '#64748b',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  emptyCard: {
+    textAlign: 'center',
+    padding: '30px 20px',
+    backgroundColor: '#f8fafc',
     borderRadius: '8px',
-    backgroundColor: '#f8fafc',
-    border: '1px solid #e2e8f0',
+    border: '1px dashed #cbd5e1',
   },
-  requestCard: {
-    padding: '18px',
-    borderRadius: '12px',
-    backgroundColor: '#f8fafc',
-    border: '1px solid #e2e8f0',
-  },
-  jobFeedRow: {
+  jobFeedCard: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '14px',
+    padding: '16px',
     borderRadius: '10px',
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#ffffff',
     border: '1px solid #e2e8f0',
+    gap: '16px',
     flexWrap: 'wrap',
-    gap: '12px',
   }
 };

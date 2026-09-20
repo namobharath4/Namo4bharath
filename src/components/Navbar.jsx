@@ -5,42 +5,53 @@ import {
   Briefcase, 
   Wrench, 
   Building2, 
-  ShieldCheck, 
   Menu, 
   X, 
   LogOut, 
   User, 
-  Bell, 
-  ChevronDown 
+  ChevronRight,
+  ShieldCheck
 } from 'lucide-react';
 
 export default function Navbar({ onOpenAuth, activeTab, setActiveTab }) {
-  const { user, profile, currentRole, logout, loginAsDemo } = useAuth();
+  const { user, profile, currentRole, logout, isAuthenticated } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
 
   const getRoleBadge = (role) => {
     switch (role) {
       case 'farmer':
-        return { label: 'Farmer', icon: Sprout, color: 'badge-green', emoji: '🌾' };
+        return { label: 'Farmer Portal', emoji: '🌾', color: 'badge-green' };
       case 'company':
-        return { label: 'Agri Company', icon: Building2, color: 'badge-blue', emoji: '🏢' };
+        return { label: 'Company Portal', emoji: '🏢', color: 'badge-blue' };
       case 'skilled_worker':
-        return { label: 'Skilled Labour + Tools', icon: Wrench, color: 'badge-yellow', emoji: '🛠️' };
-      case 'admin':
-        return { label: 'Admin Desk', icon: ShieldCheck, color: 'badge-slate', emoji: '⚖️' };
+        return { label: 'Skilled Labour + Tools', emoji: '🛠️', color: 'badge-yellow' };
       default:
-        return { label: 'Guest', icon: User, color: 'badge-slate', emoji: '👤' };
+        return { label: 'Agricultural Member', emoji: '🌱', color: 'badge-slate' };
     }
   };
 
   const currentBadge = getRoleBadge(currentRole);
 
+  const handlePortalClick = (role) => {
+    if (isAuthenticated && currentRole === role) {
+      setActiveTab('dashboard');
+    } else if (isAuthenticated) {
+      // Authenticated with different role, still allow visiting dashboard
+      setActiveTab('dashboard');
+    } else {
+      onOpenAuth('login', role);
+    }
+    setMobileMenuOpen(false);
+  };
+
   return (
     <header style={styles.header}>
       <div className="container" style={styles.navContainer}>
-        {/* Brand Logo */}
-        <div style={styles.brandGroup} onClick={() => setActiveTab('landing')}>
+        {/* Brand Identity */}
+        <div 
+          style={styles.brandGroup} 
+          onClick={() => { setActiveTab('landing'); setMobileMenuOpen(false); }}
+        >
           <div style={styles.logoIcon}>
             <Sprout size={24} color="#ffffff" strokeWidth={2.5} />
           </div>
@@ -52,7 +63,7 @@ export default function Navbar({ onOpenAuth, activeTab, setActiveTab }) {
           </div>
         </div>
 
-        {/* Desktop Nav Links */}
+        {/* Desktop Navigation Links */}
         <nav style={styles.desktopNav}>
           <button 
             style={activeTab === 'landing' ? styles.navLinkActive : styles.navLink}
@@ -72,162 +83,148 @@ export default function Navbar({ onOpenAuth, activeTab, setActiveTab }) {
           >
             Tools & Equipment
           </button>
-          {user && (
+          
+          {/* User's Portal Link */}
+          {isAuthenticated && (
             <button 
               style={activeTab === 'dashboard' ? styles.navLinkActive : styles.navLink}
               onClick={() => setActiveTab('dashboard')}
             >
-              My Dashboard
+              My Portal ({currentBadge.emoji})
             </button>
           )}
-          <button 
-            style={activeTab === 'admin' ? styles.navLinkActive : styles.navLink}
-            onClick={() => setActiveTab('admin')}
-          >
-            Official Admin
-          </button>
         </nav>
 
-        {/* Right Side Auth / Role Controls */}
+        {/* Right Side Auth Controls */}
         <div style={styles.rightControls}>
-          {user ? (
+          {isAuthenticated ? (
             <div style={styles.userControls}>
-              {/* Role Badge Dropdown */}
-              <div style={{ position: 'relative' }}>
-                <button 
-                  style={styles.roleButton}
-                  onClick={() => setRoleDropdownOpen(!roleDropdownOpen)}
-                >
-                  <span style={{ fontSize: '15px' }}>{currentBadge.emoji}</span>
-                  <span style={{ fontWeight: 600 }}>{currentBadge.label}</span>
-                  <ChevronDown size={14} color="#64748b" />
-                </button>
-
-                {roleDropdownOpen && (
-                  <div style={styles.dropdownMenu}>
-                    <div style={styles.dropdownHeader}>Switch Active Role View:</div>
-                    <button 
-                      style={styles.dropdownItem}
-                      onClick={() => { loginAsDemo('farmer'); setRoleDropdownOpen(false); setActiveTab('dashboard'); }}
-                    >
-                      <span>🌾 Farmer Portal</span>
-                    </button>
-                    <button 
-                      style={styles.dropdownItem}
-                      onClick={() => { loginAsDemo('company'); setRoleDropdownOpen(false); setActiveTab('dashboard'); }}
-                    >
-                      <span>🏢 Agri Company Portal</span>
-                    </button>
-                    <button 
-                      style={styles.dropdownItem}
-                      onClick={() => { loginAsDemo('skilled_worker'); setRoleDropdownOpen(false); setActiveTab('dashboard'); }}
-                    >
-                      <span>🛠️ Skilled Labour + Tools</span>
-                    </button>
-                    <button 
-                      style={styles.dropdownItem}
-                      onClick={() => { loginAsDemo('admin'); setRoleDropdownOpen(false); setActiveTab('admin'); }}
-                    >
-                      <span>⚖️ Official Regulatory Desk</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* User Greeting & Logout */}
-              <div style={styles.userGreeting}>
-                <span style={styles.userName}>{profile?.name || user?.email?.split('@')[0]}</span>
-              </div>
-
-              <button 
-                className="btn btn-secondary btn-sm"
-                onClick={logout}
-                title="Sign Out"
-                style={{ padding: '8px 12px' }}
+              {/* Active Role Tag */}
+              <div 
+                style={styles.roleTag}
+                onClick={() => setActiveTab('dashboard')}
+                title="Open your portal dashboard"
               >
-                <LogOut size={16} />
-                <span className="hidden-mobile">Sign Out</span>
+                <span>{currentBadge.emoji}</span>
+                <span style={{ fontWeight: 700, fontSize: '13px' }}>{currentBadge.label}</span>
+              </div>
+
+              {/* User Name */}
+              <div style={styles.userGreeting}>
+                <span style={styles.userName}>
+                  {profile?.name || profile?.full_name || user?.email?.split('@')[0]}
+                </span>
+              </div>
+
+              {/* Logout Button */}
+              <button 
+                className="btn btn-sm btn-secondary"
+                onClick={logout}
+                title="Sign out of account"
+                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <LogOut size={14} />
+                <span>Sign Out</span>
               </button>
             </div>
           ) : (
-            <div style={styles.authButtons}>
+            <div style={styles.guestControls}>
               <button 
-                className="btn btn-secondary"
+                className="btn btn-sm btn-secondary"
                 onClick={() => onOpenAuth('login', 'farmer')}
               >
                 Sign In
               </button>
               <button 
-                className="btn btn-primary"
+                className="btn btn-sm btn-primary"
                 onClick={() => onOpenAuth('signup', 'farmer')}
               >
-                Get Started
+                Join Platform
               </button>
             </div>
           )}
 
-          {/* Mobile Hamburger Button */}
+          {/* Mobile Menu Toggle Button */}
           <button 
-            style={styles.mobileMenuToggle}
+            style={styles.mobileMenuBtn}
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            aria-label="Toggle Navigation Menu"
           >
             {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
         </div>
       </div>
 
-      {/* Mobile Drawer Menu */}
+      {/* Mobile Menu Drawer */}
       {mobileMenuOpen && (
         <div style={styles.mobileDrawer}>
-          <button 
-            style={styles.mobileNavLink}
-            onClick={() => { setActiveTab('landing'); setMobileMenuOpen(false); }}
-          >
-            Home
-          </button>
-          <button 
-            style={styles.mobileNavLink}
-            onClick={() => { setActiveTab('jobs'); setMobileMenuOpen(false); }}
-          >
-            Find Work & Jobs
-          </button>
-          <button 
-            style={styles.mobileNavLink}
-            onClick={() => { setActiveTab('marketplace'); setMobileMenuOpen(false); }}
-          >
-            Tools & Equipment
-          </button>
-          {user && (
+          <div style={styles.mobileLinks}>
             <button 
-              style={styles.mobileNavLink}
-              onClick={() => { setActiveTab('dashboard'); setMobileMenuOpen(false); }}
+              style={activeTab === 'landing' ? styles.mobileLinkActive : styles.mobileLink}
+              onClick={() => { setActiveTab('landing'); setMobileMenuOpen(false); }}
             >
-              My Dashboard
+              Home
             </button>
-          )}
-          <button 
-            style={styles.mobileNavLink}
-            onClick={() => { setActiveTab('admin'); setMobileMenuOpen(false); }}
-          >
-            Official Admin Desk
-          </button>
+            <button 
+              style={activeTab === 'jobs' ? styles.mobileLinkActive : styles.mobileLink}
+              onClick={() => { setActiveTab('jobs'); setMobileMenuOpen(false); }}
+            >
+              Find Work & Jobs
+            </button>
+            <button 
+              style={activeTab === 'marketplace' ? styles.mobileLinkActive : styles.mobileLink}
+              onClick={() => { setActiveTab('marketplace'); setMobileMenuOpen(false); }}
+            >
+              Tools & Equipment
+            </button>
 
-          {!user && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '16px' }}>
-              <button 
-                className="btn btn-secondary"
-                onClick={() => { onOpenAuth('login', 'farmer'); setMobileMenuOpen(false); }}
-              >
-                Sign In
-              </button>
-              <button 
-                className="btn btn-primary"
-                onClick={() => { onOpenAuth('signup', 'farmer'); setMobileMenuOpen(false); }}
-              >
-                Create Account
-              </button>
-            </div>
-          )}
+            {isAuthenticated ? (
+              <>
+                <button 
+                  style={activeTab === 'dashboard' ? styles.mobileLinkActive : styles.mobileLink}
+                  onClick={() => { setActiveTab('dashboard'); setMobileMenuOpen(false); }}
+                >
+                  My Portal ({currentBadge.label})
+                </button>
+                <div style={{ padding: '12px 16px', borderTop: '1px solid #e2e8f0', marginTop: '8px' }}>
+                  <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '8px' }}>
+                    Signed in as <strong>{profile?.name || user?.email}</strong>
+                  </div>
+                  <button 
+                    className="btn btn-secondary btn-sm" 
+                    style={{ width: '100%' }}
+                    onClick={() => { logout(); setMobileMenuOpen(false); }}
+                  >
+                    <LogOut size={14} /> Sign Out
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid #e2e8f0', marginTop: '8px' }}>
+                <div style={{ fontSize: '12px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>
+                  Choose Your Portal
+                </div>
+                <button 
+                  className="btn btn-outline-primary"
+                  onClick={() => handlePortalClick('farmer')}
+                >
+                  🌾 Farmer Portal
+                </button>
+                <button 
+                  className="btn btn-outline-primary"
+                  onClick={() => handlePortalClick('company')}
+                >
+                  🏢 Company Portal
+                </button>
+                <button 
+                  className="btn btn-outline-primary"
+                  onClick={() => handlePortalClick('skilled_worker')}
+                >
+                  🛠️ Skilled Labour + Tools
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </header>
@@ -236,12 +233,12 @@ export default function Navbar({ onOpenAuth, activeTab, setActiveTab }) {
 
 const styles = {
   header: {
-    position: 'sticky',
-    top: 0,
-    zIndex: 100,
     backgroundColor: '#ffffff',
     borderBottom: '1px solid #e2e8f0',
-    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
+    position: 'sticky',
+    top: 0,
+    zIndex: 40,
+    boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
   },
   navContainer: {
     display: 'flex',
@@ -254,43 +251,43 @@ const styles = {
     alignItems: 'center',
     gap: '12px',
     cursor: 'pointer',
+    userSelect: 'none',
   },
   logoIcon: {
-    width: '40px',
-    height: '40px',
-    borderRadius: '10px',
+    width: '42px',
+    height: '42px',
     backgroundColor: '#15803d',
+    borderRadius: '10px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    boxShadow: '0 4px 10px rgba(21, 128, 61, 0.3)',
+    boxShadow: '0 2px 8px rgba(21, 128, 61, 0.25)',
   },
   brandTitle: {
     fontSize: '20px',
-    fontWeight: '800',
+    fontWeight: '900',
     color: '#0f172a',
     letterSpacing: '-0.5px',
-    lineHeight: 1,
+    lineHeight: '1.1',
   },
   brandDot: {
-    color: '#22c55e',
+    color: '#15803d',
   },
   brandTagline: {
     fontSize: '9px',
-    fontWeight: '700',
-    color: '#15803d',
+    fontWeight: '800',
+    color: '#64748b',
     letterSpacing: '1px',
-    marginTop: '3px',
   },
   desktopNav: {
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
+    gap: '6px',
   },
   navLink: {
     background: 'none',
     border: 'none',
-    padding: '8px 14px',
+    padding: '8px 16px',
     fontSize: '14px',
     fontWeight: '600',
     color: '#475569',
@@ -299,12 +296,12 @@ const styles = {
     transition: 'all 0.15s ease',
   },
   navLinkActive: {
-    background: '#dcfce7',
+    background: '#f0fdf4',
     border: 'none',
-    padding: '8px 14px',
+    padding: '8px 16px',
     fontSize: '14px',
     fontWeight: '700',
-    color: '#166534',
+    color: '#15803d',
     borderRadius: '8px',
     cursor: 'pointer',
   },
@@ -316,96 +313,71 @@ const styles = {
   userControls: {
     display: 'flex',
     alignItems: 'center',
-    gap: '12px',
+    gap: '10px',
   },
-  roleButton: {
+  roleTag: {
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
     padding: '6px 12px',
-    borderRadius: '20px',
-    border: '1px solid #cbd5e1',
     backgroundColor: '#f8fafc',
-    fontSize: '13px',
-    cursor: 'pointer',
-    transition: 'all 0.15s',
-  },
-  dropdownMenu: {
-    position: 'absolute',
-    top: '100%',
-    right: 0,
-    marginTop: '8px',
-    width: '230px',
-    backgroundColor: '#ffffff',
     border: '1px solid #e2e8f0',
-    borderRadius: '12px',
-    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.15)',
-    padding: '8px',
-    zIndex: 200,
-  },
-  dropdownHeader: {
-    fontSize: '11px',
-    fontWeight: '700',
-    color: '#64748b',
-    padding: '6px 10px',
-    textTransform: 'uppercase',
-    letterSpacing: '0.5px',
-  },
-  dropdownItem: {
-    width: '100%',
-    textAlign: 'left',
-    padding: '8px 10px',
-    borderRadius: '6px',
-    border: 'none',
-    background: 'none',
-    fontSize: '13px',
-    fontWeight: '600',
-    color: '#1e293b',
+    borderRadius: '8px',
     cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    transition: 'background 0.15s',
+    color: '#0f172a',
   },
   userGreeting: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'flex-end',
+    display: 'none',
+    fontSize: '13px',
+    color: '#475569',
+    maxWidth: '120px',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
   userName: {
-    fontSize: '13px',
-    fontWeight: '700',
-    color: '#1e293b',
+    fontWeight: '600',
   },
-  authButtons: {
+  guestControls: {
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
   },
-  mobileMenuToggle: {
+  mobileMenuBtn: {
     display: 'none',
     background: 'none',
     border: 'none',
-    padding: '6px',
+    padding: '8px',
+    color: '#0f172a',
     cursor: 'pointer',
-    color: '#334155',
   },
   mobileDrawer: {
-    display: 'flex',
-    flexDirection: 'column',
-    padding: '16px 20px 24px',
     backgroundColor: '#ffffff',
     borderBottom: '1px solid #e2e8f0',
+    padding: '12px 0 20px',
   },
-  mobileNavLink: {
+  mobileLinks: {
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  mobileLink: {
     background: 'none',
     border: 'none',
-    padding: '12px 0',
-    fontSize: '16px',
+    padding: '12px 20px',
+    textAlign: 'left',
+    fontSize: '15px',
     fontWeight: '600',
     color: '#334155',
+    cursor: 'pointer',
+  },
+  mobileLinkActive: {
+    background: '#f0fdf4',
+    border: 'none',
+    padding: '12px 20px',
     textAlign: 'left',
-    borderBottom: '1px solid #f1f5f9',
+    fontSize: '15px',
+    fontWeight: '700',
+    color: '#15803d',
     cursor: 'pointer',
   }
 };

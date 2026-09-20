@@ -1,184 +1,390 @@
-import React, { useState } from 'react';
-import { Search, MapPin, Calendar, Briefcase, Filter, PlusCircle, CheckCircle } from 'lucide-react';
-import { INITIAL_JOBS } from '../data/mockData';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { dbService } from '../services/dbService';
+import { 
+  Search, 
+  MapPin, 
+  Calendar, 
+  Clock, 
+  DollarSign, 
+  PlusCircle, 
+  Filter, 
+  CheckCircle2, 
+  Send,
+  Briefcase,
+  Layers
+} from 'lucide-react';
 
-export default function JobBoardPage({ onOpenJobModal, onOpenMessage }) {
-  const { user } = useAuth();
+export default function JobBoardPage({ onOpenJobModal, onOpenAuth, onOpenMessage }) {
+  const { user, currentRole, isAuthenticated } = useAuth();
+
+  const [jobs, setJobs] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCrop, setSelectedCrop] = useState('all');
   const [selectedUrgency, setSelectedUrgency] = useState('all');
-  const [appliedJobs, setAppliedJobs] = useState([]);
 
-  const filteredJobs = INITIAL_JOBS.filter(job => {
-    const matchesSearch = job.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          job.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          job.location.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCrop = selectedCrop === 'all' || job.crop.toLowerCase() === selectedCrop.toLowerCase();
-    const matchesUrgency = selectedUrgency === 'all' || job.urgency.toLowerCase() === selectedUrgency.toLowerCase();
-    return matchesSearch && matchesCrop && matchesUrgency;
-  });
+  // Application Drawer
+  const [selectedJobForApply, setSelectedJobForApply] = useState(null);
+  const [pitch, setPitch] = useState('');
+  const [proposedRate, setProposedRate] = useState('');
+  const [applicationSuccess, setApplicationSuccess] = useState('');
 
-  const handleApply = (jobId, posterName) => {
-    setAppliedJobs(prev => [...prev, jobId]);
-    onOpenMessage(posterName);
+  useEffect(() => {
+    fetchJobs();
+  }, [selectedCrop, selectedUrgency]);
+
+  async function fetchJobs() {
+    setLoading(true);
+    try {
+      const data = await dbService.getJobs({
+        searchTerm,
+        crop: selectedCrop,
+        urgency: selectedUrgency,
+        status: 'OPEN'
+      });
+      setJobs(data);
+    } catch (err) {
+      console.warn('JobBoard fetch error:', err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    fetchJobs();
+  };
+
+  const handleApplyClick = (job) => {
+    if (!isAuthenticated) {
+      onOpenAuth('login', 'skilled_worker');
+      return;
+    }
+    setSelectedJobForApply(job);
+    setProposedRate(job.budget || 1800);
+  };
+
+  const handleConfirmApplication = async (e) => {
+    e.preventDefault();
+    if (!selectedJobForApply) return;
+
+    await dbService.applyToJob({
+      jobId: selectedJobForApply.id,
+      workerId: user.id,
+      workerName: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Skilled Operator',
+      pitch,
+      proposedRate: Number(proposedRate)
+    });
+
+    setApplicationSuccess(`Application submitted successfully for "${selectedJobForApply.title}"!`);
+    setSelectedJobForApply(null);
+    setPitch('');
+    setTimeout(() => setApplicationSuccess(''), 4000);
   };
 
   return (
     <div style={{ padding: '36px 0 72px' }}>
       <div className="container">
         {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '28px', flexWrap: 'wrap', gap: '16px' }}>
+        <div style={styles.headerRow}>
           <div>
-            <span className="badge badge-green" style={{ marginBottom: '8px' }}>LIVE OPPORTUNITIES</span>
-            <h1 style={{ fontSize: '32px', fontWeight: '800', color: '#0f172a' }}>
-              Agricultural Work & Operations Board
-            </h1>
-            <p style={{ fontSize: '15px', color: '#64748b' }}>
-              Browse farm preparation, spraying, harvest, and agro-enterprise campaigns looking for hands & machines.
+            <span className="badge badge-green" style={{ marginBottom: '8px' }}>REAL WORK OPPORTUNITIES</span>
+            <h1 style={styles.pageTitle}>Agricultural Requirements & Job Board</h1>
+            <p style={styles.pageSubtitle}>
+              Direct contract requirements posted by local farmers, producers, and agribusinesses.
             </p>
           </div>
 
           <button 
             className="btn btn-primary btn-lg"
-            onClick={onOpenJobModal}
+            onClick={() => {
+              if (isAuthenticated) {
+                onOpenJobModal();
+              } else {
+                onOpenAuth('login', 'farmer');
+              }
+            }}
           >
             <PlusCircle size={20} />
-            Post New Requirement
+            Post Farm Requirement
           </button>
         </div>
 
-        {/* Filter Bar */}
-        <div className="card" style={{ padding: '16px 20px', marginBottom: '28px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        {/* Application Success Feedback */}
+        {applicationSuccess && (
+          <div className="badge badge-green" style={{ display: 'block', padding: '14px 18px', fontSize: '14px', marginBottom: '24px' }}>
+            ✓ {applicationSuccess}
+          </div>
+        )}
+
+        {/* Search & Filter Bar */}
+        <div className="card" style={{ marginBottom: '32px', padding: '16px 20px' }}>
+          <form onSubmit={handleSearchSubmit} style={styles.filterForm}>
+            <div style={styles.searchBox}>
               <Search size={18} color="#64748b" />
               <input 
-                type="text" 
-                placeholder="Search job title, skills, or district..." 
+                type="text"
+                placeholder="Search jobs by title, crop, district or skill..."
                 className="form-input"
-                style={{ border: 'none', padding: 0 }}
+                style={{ border: 'none', padding: '6px 0' }}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
 
-            <select 
-              className="form-select"
-              value={selectedCrop}
-              onChange={(e) => setSelectedCrop(e.target.value)}
-            >
-              <option value="all">All Crops</option>
-              <option value="Paddy">Paddy</option>
-              <option value="Chilli">Chilli</option>
-              <option value="Cotton">Cotton</option>
-              <option value="Multi-crop">Multi-crop (Commercial)</option>
-            </select>
+            <div style={styles.selectGroup}>
+              <select 
+                className="form-select"
+                style={{ minWidth: '130px' }}
+                value={selectedCrop}
+                onChange={(e) => setSelectedCrop(e.target.value)}
+              >
+                <option value="all">All Crops</option>
+                <option value="Paddy">Paddy / Rice</option>
+                <option value="Cotton">Cotton</option>
+                <option value="Chilli">Chilli</option>
+                <option value="Maize">Maize</option>
+                <option value="Sugarcane">Sugarcane</option>
+              </select>
 
-            <select 
-              className="form-select"
-              value={selectedUrgency}
-              onChange={(e) => setSelectedUrgency(e.target.value)}
-            >
-              <option value="all">All Priorities</option>
-              <option value="emergency">Emergency (within 24 hrs)</option>
-              <option value="high">High Priority</option>
-              <option value="medium">Standard Priority</option>
-            </select>
-          </div>
+              <select 
+                className="form-select"
+                style={{ minWidth: '130px' }}
+                value={selectedUrgency}
+                onChange={(e) => setSelectedUrgency(e.target.value)}
+              >
+                <option value="all">All Urgencies</option>
+                <option value="emergency">Emergency / Immediate</option>
+                <option value="high">High Priority</option>
+                <option value="medium">Standard / Planned</option>
+              </select>
+
+              <button type="submit" className="btn btn-primary">
+                Filter Jobs
+              </button>
+            </div>
+          </form>
         </div>
 
-        {/* Jobs Feed Grid */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {filteredJobs.length === 0 ? (
-            <div className="card" style={{ textAlign: 'center', padding: '48px 24px' }}>
-              <Briefcase size={40} color="#94a3b8" style={{ margin: '0 auto 12px' }} />
-              <h3 style={{ fontSize: '18px', fontWeight: '700' }}>No matching work postings found</h3>
-              <p style={{ color: '#64748b', fontSize: '14px' }}>Try widening your search terms or filters.</p>
-            </div>
-          ) : (
-            filteredJobs.map((job) => (
-              <div key={job.id} className="card" style={styles.jobItemCard}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                    <span className="badge badge-green">{job.crop}</span>
-                    <span className="badge badge-slate">Posted by: {job.posterName}</span>
-                    {job.urgency === 'emergency' && (
-                      <span className="badge" style={{ backgroundColor: '#fee2e2', color: '#dc2626' }}>
-                        ⚡ Emergency Need
-                      </span>
-                    )}
+        {/* Jobs List */}
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '60px' }}>
+            <div style={{ fontSize: '16px', color: '#64748b' }}>Loading active agricultural jobs...</div>
+          </div>
+        ) : jobs.length === 0 ? (
+          <div className="card" style={styles.emptyState}>
+            <Briefcase size={48} color="#94a3b8" style={{ margin: '0 auto 16px' }} />
+            <h3 style={{ fontSize: '20px', fontWeight: '800', color: '#0f172a' }}>No jobs available yet</h3>
+            <p style={{ color: '#64748b', fontSize: '15px', maxWidth: '440px', margin: '6px auto 20px' }}>
+              Post a farm requirement to receive applications and transparent price proposals from verified machine operators.
+            </p>
+            <button 
+              className="btn btn-primary btn-lg"
+              onClick={() => {
+                if (isAuthenticated) onOpenJobModal();
+                else onOpenAuth('login', 'farmer');
+              }}
+            >
+              Post a Requirement Now
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {jobs.map((job) => (
+              <div key={job.id} className="card" style={styles.jobRowCard}>
+                <div style={{ flexGrow: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
+                    <span className="badge badge-green">{job.crop || 'Field Work'}</span>
+                    <span style={styles.urgencyBadge(job.urgency)}>{(job.urgency || 'MEDIUM').toUpperCase()}</span>
+                    <span className="badge badge-slate">{job.rate_type || 'per_day'}</span>
                   </div>
 
-                  <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', marginBottom: '8px' }}>
-                    {job.title}
-                  </h3>
-                  <p style={{ fontSize: '14px', color: '#475569', lineHeight: '1.6', marginBottom: '16px' }}>
-                    {job.description}
-                  </p>
+                  <h3 style={styles.jobTitle}>{job.title}</h3>
+                  <p style={styles.jobDesc}>{job.description}</p>
 
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
-                    {job.requiredSkills.map((skill, idx) => (
-                      <span key={idx} className="badge badge-slate">Skill: {skill}</span>
-                    ))}
-                    {job.requiredEquipment?.map((eq, idx) => (
-                      <span key={idx} className="badge badge-yellow">Machine: {eq}</span>
-                    ))}
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '20px', fontSize: '13px', color: '#64748b' }}>
+                  <div style={styles.metaWrap}>
                     <span><MapPin size={14} style={{ display: 'inline' }} /> {job.location}</span>
-                    <span><Calendar size={14} style={{ display: 'inline' }} /> {job.durationDays} Days</span>
-                    <span><Briefcase size={14} style={{ display: 'inline' }} /> {job.workersNeeded} Operator(s) needed</span>
+                    <span><Calendar size={14} style={{ display: 'inline' }} /> {job.duration_days || 1} Days Required</span>
+                    <span>Required: {Array.isArray(job.required_skills) ? job.required_skills.join(', ') : 'Tractor / Equipment Operator'}</span>
                   </div>
                 </div>
 
-                {/* Right Pay & Action */}
-                <div style={styles.jobActionBox}>
-                  <div style={{ fontSize: '24px', fontWeight: '800', color: '#15803d' }}>
-                    ₹{job.budget.toLocaleString()}
+                <div style={styles.actionColumn}>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '22px', fontWeight: '900', color: '#15803d' }}>
+                      ₹{Number(job.budget || 0).toLocaleString()}
+                    </div>
+                    <span style={{ fontSize: '12px', color: '#64748b' }}>Estimated Budget</span>
                   </div>
-                  <span style={{ fontSize: '12px', color: '#64748b', marginBottom: '16px' }}>
-                    {job.rateType === 'per_acre' ? 'Per Acre Rate' : job.rateType === 'per_day' ? 'Per Day' : 'Total Contract'}
-                  </span>
 
-                  {appliedJobs.includes(job.id) ? (
-                    <button className="btn btn-secondary" disabled style={{ width: '100%' }}>
-                      <CheckCircle size={16} color="#16a34a" /> Applied
-                    </button>
-                  ) : (
+                  <div style={{ display: 'flex', gap: '8px' }}>
                     <button 
                       className="btn btn-primary"
-                      style={{ width: '100%' }}
-                      onClick={() => handleApply(job.id, job.posterName)}
+                      onClick={() => handleApplyClick(job)}
                     >
-                      Apply / Quote Rate
+                      Apply Now
                     </button>
-                  )}
+                    <button 
+                      className="btn btn-secondary"
+                      onClick={() => onOpenMessage(job.poster_name || 'Farm Owner')}
+                    >
+                      Inquire
+                    </button>
+                  </div>
                 </div>
               </div>
-            ))
-          )}
-        </div>
+            ))}
+          </div>
+        )}
+
+        {/* Apply Modal / Drawer */}
+        {selectedJobForApply && (
+          <div className="modal-overlay" onClick={() => setSelectedJobForApply(null)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '480px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', marginBottom: '4px' }}>
+                Apply for: {selectedJobForApply.title}
+              </h3>
+              <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '16px' }}>
+                Location: {selectedJobForApply.location} • Budget: ₹{Number(selectedJobForApply.budget || 0).toLocaleString()}
+              </p>
+
+              <form onSubmit={handleConfirmApplication} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div className="form-group">
+                  <label className="form-label">Your Proposed Rate (₹)</label>
+                  <input 
+                    type="number"
+                    required
+                    className="form-input"
+                    value={proposedRate}
+                    onChange={(e) => setProposedRate(e.target.value)}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Pitch / Experience & Equipment Provided</label>
+                  <textarea 
+                    rows={4}
+                    required
+                    className="form-textarea"
+                    placeholder="Describe your machinery, operational speed, and when you can commence work..."
+                    value={pitch}
+                    onChange={(e) => setPitch(e.target.value)}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary" 
+                    style={{ flex: 1 }}
+                    onClick={() => setSelectedJobForApply(null)}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="btn btn-primary" 
+                    style={{ flex: 1 }}
+                  >
+                    Send Proposal
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 const styles = {
-  jobItemCard: {
+  headerRow: {
     display: 'flex',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '28px',
+    flexWrap: 'wrap',
+    gap: '20px',
+  },
+  pageTitle: {
+    fontSize: '30px',
+    fontWeight: '900',
+    color: '#0f172a',
+    letterSpacing: '-0.5px',
+  },
+  pageSubtitle: {
+    fontSize: '15px',
+    color: '#64748b',
+    marginTop: '4px',
+  },
+  filterForm: {
+    display: 'flex',
+    gap: '12px',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  searchBox: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    flex: 1,
+    minWidth: '240px',
+  },
+  selectGroup: {
+    display: 'flex',
+    gap: '8px',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  emptyState: {
+    textAlign: 'center',
+    padding: '64px 20px',
+    border: '1px dashed #cbd5e1',
+  },
+  jobRowCard: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '24px',
     gap: '24px',
     flexWrap: 'wrap',
   },
-  jobActionBox: {
+  jobTitle: {
+    fontSize: '18px',
+    fontWeight: '800',
+    color: '#0f172a',
+    marginBottom: '6px',
+  },
+  jobDesc: {
+    fontSize: '14px',
+    color: '#475569',
+    marginBottom: '12px',
+    lineHeight: '1.5',
+  },
+  metaWrap: {
+    display: 'flex',
+    gap: '20px',
+    fontSize: '13px',
+    color: '#64748b',
+    flexWrap: 'wrap',
+  },
+  actionColumn: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'flex-end',
-    justifyContent: 'center',
+    gap: '12px',
     minWidth: '180px',
-    borderLeft: '1px solid #f1f5f9',
-    paddingLeft: '24px',
-  }
+  },
+  urgencyBadge: (urgency) => ({
+    fontSize: '11px',
+    fontWeight: '700',
+    padding: '2px 8px',
+    borderRadius: '4px',
+    backgroundColor: urgency === 'emergency' ? '#fee2e2' : '#f1f5f9',
+    color: urgency === 'emergency' ? '#dc2626' : '#475569',
+  })
 };
