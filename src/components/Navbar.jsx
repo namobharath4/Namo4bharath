@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import StorageImage from './StorageImage';
 import { 
   Sprout, 
   Briefcase, 
@@ -109,8 +110,19 @@ export default function Navbar({ onOpenAuth, activeTab, setActiveTab }) {
                 <span style={{ fontWeight: 700, fontSize: '13px' }}>{currentBadge.label}</span>
               </div>
 
-              {/* User Name */}
-              <div style={styles.userGreeting}>
+              {/* User Name & Avatar */}
+              <div style={{ ...styles.userGreeting, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {profile?.avatar_url ? (
+                  <StorageImage 
+                    src={profile.avatar_url} 
+                    alt="User profile" 
+                    style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #cbd5e1' }}
+                  />
+                ) : (
+                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '700', color: '#475569' }}>
+                    {(profile?.name || profile?.full_name || user?.email || 'U').charAt(0).toUpperCase()}
+                  </div>
+                )}
                 <span style={styles.userName}>
                   {profile?.name || profile?.full_name || user?.email?.split('@')[0]}
                 </span>

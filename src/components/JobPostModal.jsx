@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { X, CheckCircle2 } from 'lucide-react';
+import { X, CheckCircle2, Upload, Trash2, Paperclip } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { dbService } from '../services/dbService';
+import { storageService } from '../services/storageService';
 
 export default function JobPostModal({ isOpen, onClose, onJobCreated }) {
   const { user, profile, currentRole } = useAuth();
@@ -17,17 +18,63 @@ export default function JobPostModal({ isOpen, onClose, onJobCreated }) {
   const [budget, setBudget] = useState(4000);
   const [rateType, setRateType] = useState('per_day');
   const [urgency, setUrgency] = useState('medium');
+  const [attachmentFile, setAttachmentFile] = useState(null);
+  const [attachmentPreview, setAttachmentPreview] = useState('');
+  const [uploadError, setUploadError] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
 
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        setUploadError('File size exceeds 10MB limit.');
+        return;
+      }
+      setUploadError('');
+      setAttachmentFile(file);
+      if (file.type.startsWith('image/')) {
+        setAttachmentPreview(URL.createObjectURL(file));
+      } else {
+        setAttachmentPreview('');
+      }
+    }
+  };
+
+  const handleRemoveFile = () => {
+    setAttachmentFile(null);
+    setAttachmentPreview('');
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setUploadError('');
 
     try {
+      const itemId = crypto.randomUUID();
+      let attachmentUrl = null;
+
+      // Upload file to Supabase Storage if selected
+      if (attachmentFile && user?.id) {
+        try {
+          const uploadRes = await storageService.uploadFile({
+            file: attachmentFile,
+            userId: user.id,
+            featureName: 'jobs',
+            itemId
+          });
+          attachmentUrl = uploadRes.path;
+        } catch (uploadErr) {
+          console.error('Job attachment upload error:', uploadErr);
+          setUploadError('Failed to upload attachment, posting job without file.');
+        }
+      }
+
       const created = await dbService.createJob({
+        id: itemId,
         poster_id: user?.id,
         poster_name: profile?.name || profile?.full_name || user?.email?.split('@')[0],
         poster_role: currentRole || 'farmer',
@@ -41,7 +88,8 @@ export default function JobPostModal({ isOpen, onClose, onJobCreated }) {
         duration_days: Number(durationDays),
         budget: Number(budget),
         rate_type: rateType,
-        urgency
+        urgency,
+        attachment_url: attachmentUrl
       });
 
       if (onJobCreated) {
@@ -50,10 +98,13 @@ export default function JobPostModal({ isOpen, onClose, onJobCreated }) {
       setSubmitted(true);
       setTimeout(() => {
         setSubmitted(false);
+        setAttachmentFile(null);
+        setAttachmentPreview('');
         onClose();
       }, 1200);
     } catch (err) {
       console.error('Failed to create job:', err);
+      setUploadError(err.message || 'Failed to publish requirement.');
     } finally {
       setIsSubmitting(false);
     }
@@ -209,6 +260,45 @@ export default function JobPostModal({ isOpen, onClose, onJobCreated }) {
                   <option value="total">Total Fixed</option>
                 </select>
               </div>
+            </div>
+
+            {/* Farm / Field Attachment (Supabase Storage "app-files") */}
+            <div className="form-group" style={{ marginTop: '4px' }}>
+              <label className="form-label">
+                <Paperclip size={13} style={{ display: 'inline', marginRight: '4px' }} />
+                Field Photo or Requirement Attachment (Optional)
+              </label>
+              <input 
+                type="file" 
+                accept="image/*, application/pdf"
+                onChange={handleFileChange}
+                className="form-input"
+                style={{ padding: '8px' }}
+              />
+              {uploadError && (
+                <span style={{ fontSize: '12px', color: '#ef4444' }}>{uploadError}</span>
+              )}
+              {attachmentFile && (
+                <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: '#f1f5f9', borderRadius: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                    {attachmentPreview ? (
+                      <img src={attachmentPreview} alt="Preview" style={{ width: '32px', height: '32px', objectFit: 'cover', borderRadius: '4px' }} />
+                    ) : (
+                      <Paperclip size={16} color="#64748b" />
+                    )}
+                    <span style={{ fontSize: '12px', color: '#334155', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                      {attachmentFile.name} ({(attachmentFile.size / 1024).toFixed(1)} KB)
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRemoveFile}
+                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: '600' }}
+                  >
+                    <Trash2 size={13} /> Remove
+                  </button>
+                </div>
+              )}
             </div>
 
             <button 

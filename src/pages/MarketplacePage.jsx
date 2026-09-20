@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { dbService } from '../services/dbService';
+import StorageImage from '../components/StorageImage';
 import { 
   Tractor, 
   Search, 
@@ -162,10 +163,11 @@ export default function MarketplacePage({ onOpenEquipmentModal, onOpenAuth, onOp
           <div className="grid-3">
             {equipmentList.map((eq) => (
               <div key={eq.id} className="card" style={{ display: 'flex', flexDirection: 'column', padding: '16px' }}>
-                <img 
-                  src={eq.image_url || 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=500&auto=format&fit=crop&q=80'} 
+                <StorageImage 
+                  src={eq.image_url} 
                   alt={eq.name}
                   style={styles.imageBox}
+                  fallbackSrc="https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=500&auto=format&fit=crop&q=80"
                 />
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '8px 0 4px' }}>

@@ -1,13 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import { X, Send, User, MessageSquare } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Send, User, MessageSquare, Paperclip, Trash2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { dbService } from '../services/dbService';
+import { storageService } from '../services/storageService';
+import StorageImage from './StorageImage';
 
 export default function MessageDrawer({ isOpen, onClose, targetUser }) {
   const { user, profile } = useAuth();
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
+  const [attachmentFile, setAttachmentFile] = useState(null);
+  const [attachmentPreview, setAttachmentPreview] = useState('');
   const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const fileInputRef = useRef(null);
 
   const targetName = typeof targetUser === 'string' ? targetUser : (targetUser?.name || targetUser?.full_name || 'Agricultural Partner');
   const targetId = typeof targetUser === 'object' ? (targetUser?.id || targetUser?.user_id) : targetName;
@@ -32,21 +38,73 @@ export default function MessageDrawer({ isOpen, onClose, targetUser }) {
 
   if (!isOpen) return null;
 
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        alert('File size exceeds 10MB limit.');
+        return;
+      }
+      setAttachmentFile(file);
+      if (file.type.startsWith('image/')) {
+        setAttachmentPreview(URL.createObjectURL(file));
+      } else {
+        setAttachmentPreview('');
+      }
+    }
+  };
+
+  const handleRemoveAttachment = () => {
+    setAttachmentFile(null);
+    setAttachmentPreview('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const handleSend = async (e) => {
     e.preventDefault();
-    if (!inputMessage.trim() || !user) return;
+    if ((!inputMessage.trim() && !attachmentFile) || !user) return;
 
-    const text = inputMessage.trim();
+    setSending(true);
+    const text = inputMessage.trim() || (attachmentFile ? 'Sent an attachment' : '');
     setInputMessage('');
 
-    const newMsg = await dbService.sendMessage({
-      senderId: user.id,
-      recipientId: targetId,
-      senderName: profile?.name || profile?.full_name || user.email?.split('@')[0],
-      content: text
-    });
+    try {
+      const messageId = crypto.randomUUID();
+      let attachmentUrl = null;
+      let attachmentName = null;
 
-    setMessages(prev => [...prev, newMsg]);
+      if (attachmentFile) {
+        const uploadRes = await storageService.uploadFile({
+          file: attachmentFile,
+          userId: user.id,
+          featureName: 'messages',
+          itemId: messageId
+        });
+        attachmentUrl = uploadRes.path;
+        attachmentName = attachmentFile.name;
+      }
+
+      const newMsg = await dbService.sendMessage({
+        senderId: user.id,
+        recipientId: targetId,
+        senderName: profile?.name || profile?.full_name || user.email?.split('@')[0],
+        content: text,
+        attachmentUrl,
+        attachmentName
+      });
+
+      setMessages(prev => [...prev, newMsg]);
+      handleRemoveAttachment();
+    } catch (err) {
+      console.error('Failed to send message with attachment:', err);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleDeleteMessage = async (msgId) => {
+    await dbService.deleteMessage(msgId);
+    setMessages(prev => prev.filter(m => m.id !== msgId));
   };
 
   return (
@@ -96,32 +154,102 @@ export default function MessageDrawer({ isOpen, onClose, targetUser }) {
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: isMe ? 'flex-end' : 'flex-start',
-                    marginBottom: '12px'
+                    marginBottom: '12px',
+                    position: 'relative'
                   }}
                 >
                   <div style={isMe ? styles.myBubble : styles.theirBubble}>
+                    {m.attachment_url && (
+                      <div style={{ marginBottom: '6px' }}>
+                        <StorageImage 
+                          src={m.attachment_url} 
+                          alt="Message attachment"
+                          style={{ maxWidth: '200px', maxHeight: '160px', borderRadius: '8px', objectFit: 'cover', display: 'block', marginBottom: '4px' }}
+                          fallbackSrc=""
+                        />
+                        {m.attachment_name && (
+                          <div style={{ fontSize: '11px', opacity: 0.9, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Paperclip size={11} /> {m.attachment_name}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {m.content}
                   </div>
-                  <span style={{ fontSize: '10px', color: '#94a3b8', marginTop: '3px' }}>
-                    {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
+                    <span style={{ fontSize: '10px', color: '#94a3b8' }}>
+                      {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    {isMe && (
+                      <button
+                        onClick={() => handleDeleteMessage(m.id)}
+                        style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '0 2px' }}
+                        title="Delete message and attachment"
+                      >
+                        <Trash2 size={11} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })
           )}
         </div>
 
+        {/* Selected File Preview Banner */}
+        {attachmentFile && (
+          <div style={{ padding: '6px 12px', backgroundColor: '#f1f5f9', borderTop: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+              {attachmentPreview ? (
+                <img src={attachmentPreview} alt="Preview" style={{ width: '28px', height: '28px', objectFit: 'cover', borderRadius: '4px' }} />
+              ) : (
+                <Paperclip size={16} color="#64748b" />
+              )}
+              <span style={{ fontSize: '12px', color: '#334155', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                {attachmentFile.name} ({(attachmentFile.size / 1024).toFixed(1)} KB)
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handleRemoveAttachment}
+              style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
         {/* Input Bar */}
         <form onSubmit={handleSend} style={styles.inputBar}>
           <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleFileSelect} 
+            style={{ display: 'none' }} 
+            accept="image/*, application/pdf"
+          />
+          <button 
+            type="button" 
+            onClick={() => fileInputRef.current?.click()}
+            className="btn btn-secondary"
+            style={{ padding: '8px 12px', color: '#64748b' }}
+            title="Attach photo or document (Supabase Storage)"
+          >
+            <Paperclip size={18} />
+          </button>
+          <input 
             type="text"
-            required
             className="form-input"
             placeholder="Type message, field location, or rate offer..."
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
           />
-          <button type="submit" className="btn btn-primary" style={{ padding: '10px 16px' }}>
+          <button 
+            type="submit" 
+            disabled={sending} 
+            className="btn btn-primary" 
+            style={{ padding: '10px 16px' }}
+          >
             <Send size={16} />
           </button>
         </form>

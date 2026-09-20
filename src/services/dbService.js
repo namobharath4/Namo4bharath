@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient';
+import { storageService } from './storageService';
 
 /**
  * Real Database Service for YUKTI Agricultural Platform
@@ -68,6 +69,18 @@ export const dbService = {
     if (!userId) return null;
     let savedProfile = null;
 
+    // If updating avatar_url, clean up previous file from storage if it differs
+    if (updates.avatar_url !== undefined) {
+      try {
+        const current = await this.getProfile(userId);
+        if (current?.avatar_url && current.avatar_url !== updates.avatar_url) {
+          await storageService.deleteFile(current.avatar_url);
+        }
+      } catch (err) {
+        console.warn('Failed to clean up old avatar:', err);
+      }
+    }
+
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -100,6 +113,18 @@ export const dbService = {
     saveLocalStore(store);
 
     return savedProfile || merged;
+  },
+
+  /**
+   * DELETE: Remove user avatar from Storage and clear reference in DB
+   */
+  async deleteAvatar(userId) {
+    if (!userId) return null;
+    const current = await this.getProfile(userId);
+    if (current?.avatar_url) {
+      await storageService.deleteFile(current.avatar_url);
+    }
+    return this.updateProfile(userId, { avatar_url: null });
   },
 
   /**
@@ -232,6 +257,7 @@ export const dbService = {
       rate_type: jobData.rate_type || 'per_day',
       duration_days: Number(jobData.duration_days) || 1,
       urgency: jobData.urgency || 'medium',
+      attachment_url: jobData.attachment_url || null,
       status: 'OPEN',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
@@ -300,8 +326,27 @@ export const dbService = {
 
   /**
    * DELETE: Delete a job by its ID (auth poster only)
+   * Also deletes any attached file from Supabase Storage
    */
   async deleteJob(jobId) {
+    // Check if job has an attachment to remove from storage
+    let jobRecord = null;
+    try {
+      const { data } = await supabase.from('jobs').select('attachment_url').eq('id', jobId).maybeSingle();
+      jobRecord = data;
+    } catch (e) {
+      // fallback
+    }
+
+    if (!jobRecord) {
+      const store = getLocalStore();
+      jobRecord = store.jobs.find(j => j.id === jobId);
+    }
+
+    if (jobRecord?.attachment_url) {
+      await storageService.deleteFile(jobRecord.attachment_url);
+    }
+
     try {
       const { error } = await supabase.from('jobs').delete().eq('id', jobId);
       if (error) console.warn('Supabase deleteJob error:', error.message);
@@ -314,6 +359,28 @@ export const dbService = {
     store.applications = store.applications.filter(a => a.job_id !== jobId);
     saveLocalStore(store);
     return true;
+  },
+
+  /**
+   * DELETE: Remove only the attached photo/file from a job and update DB
+   */
+  async deleteJobAttachment(jobId) {
+    let jobRecord = null;
+    try {
+      const { data } = await supabase.from('jobs').select('attachment_url').eq('id', jobId).maybeSingle();
+      jobRecord = data;
+    } catch (e) {}
+
+    if (!jobRecord) {
+      const store = getLocalStore();
+      jobRecord = store.jobs.find(j => j.id === jobId);
+    }
+
+    if (jobRecord?.attachment_url) {
+      await storageService.deleteFile(jobRecord.attachment_url);
+    }
+
+    return this.updateJob(jobId, { attachment_url: null });
   },
 
   // ==========================================================================
@@ -583,8 +650,24 @@ export const dbService = {
 
   /**
    * DELETE: Delete equipment listing (owner only)
+   * Also deletes machinery image from Supabase Storage
    */
   async deleteEquipment(equipmentId) {
+    let eqRecord = null;
+    try {
+      const { data } = await supabase.from('equipment').select('image_url').eq('id', equipmentId).maybeSingle();
+      eqRecord = data;
+    } catch (e) {}
+
+    if (!eqRecord) {
+      const store = getLocalStore();
+      eqRecord = store.equipment.find(e => e.id === equipmentId);
+    }
+
+    if (eqRecord?.image_url) {
+      await storageService.deleteFile(eqRecord.image_url);
+    }
+
     try {
       const { error } = await supabase.from('equipment').delete().eq('id', equipmentId);
       if (error) console.warn('Supabase deleteEquipment error:', error.message);
@@ -596,6 +679,28 @@ export const dbService = {
     store.equipment = store.equipment.filter(e => e.id !== equipmentId);
     saveLocalStore(store);
     return true;
+  },
+
+  /**
+   * DELETE: Remove only the equipment photo from Storage and update DB
+   */
+  async deleteEquipmentImage(equipmentId) {
+    let eqRecord = null;
+    try {
+      const { data } = await supabase.from('equipment').select('image_url').eq('id', equipmentId).maybeSingle();
+      eqRecord = data;
+    } catch (e) {}
+
+    if (!eqRecord) {
+      const store = getLocalStore();
+      eqRecord = store.equipment.find(e => e.id === equipmentId);
+    }
+
+    if (eqRecord?.image_url) {
+      await storageService.deleteFile(eqRecord.image_url);
+    }
+
+    return this.updateEquipment(equipmentId, { image_url: null });
   },
 
   // ==========================================================================
@@ -627,15 +732,17 @@ export const dbService = {
   },
 
   /**
-   * CREATE: Send a direct message
+   * CREATE: Send a direct message (supports optional file/image attachment from storage)
    */
-  async sendMessage({ senderId, recipientId, senderName, content }) {
+  async sendMessage({ senderId, recipientId, senderName, content, attachmentUrl = null, attachmentName = null }) {
     const message = {
       id: crypto.randomUUID(),
       sender_id: senderId,
       recipient_id: recipientId,
       sender_name: senderName,
       content,
+      attachment_url: attachmentUrl,
+      attachment_name: attachmentName,
       is_read: false,
       created_at: new Date().toISOString()
     };
@@ -661,6 +768,37 @@ export const dbService = {
     }
 
     return message;
+  },
+
+  /**
+   * DELETE: Delete message and remove attachment from Storage if present
+   */
+  async deleteMessage(messageId) {
+    let msgRecord = null;
+    try {
+      const { data } = await supabase.from('messages').select('attachment_url').eq('id', messageId).maybeSingle();
+      msgRecord = data;
+    } catch (e) {}
+
+    if (!msgRecord) {
+      const store = getLocalStore();
+      msgRecord = store.messages.find(m => m.id === messageId);
+    }
+
+    if (msgRecord?.attachment_url) {
+      await storageService.deleteFile(msgRecord.attachment_url);
+    }
+
+    try {
+      await supabase.from('messages').delete().eq('id', messageId);
+    } catch (e) {
+      console.warn('Supabase deleteMessage error:', e.message);
+    }
+
+    const store = getLocalStore();
+    store.messages = store.messages.filter(m => m.id !== messageId);
+    saveLocalStore(store);
+    return true;
   },
 
   /**

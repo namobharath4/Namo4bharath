@@ -18,11 +18,15 @@ import {
   MessageSquare,
   Sparkles,
   ShieldCheck,
-  Trash2
+  Trash2,
+  Upload,
+  Camera
 } from 'lucide-react';
+import StorageImage from '../components/StorageImage';
 
 export default function WorkerDashboard({ onOpenEquipmentModal, onOpenMessage }) {
-  const { user, profile, updateProfile } = useAuth();
+  const { user, profile, updateProfile, uploadAvatar, deleteAvatar } = useAuth();
+  const [avatarUploading, setAvatarUploading] = useState(false);
 
   const [availableJobs, setAvailableJobs] = useState([]);
   const [myApplications, setMyApplications] = useState([]);
@@ -122,6 +126,26 @@ export default function WorkerDashboard({ onOpenEquipmentModal, onOpenMessage })
     }
   };
 
+  const handleDeleteEquipmentImage = async (eqId) => {
+    if (window.confirm('Remove photo from this machine listing?')) {
+      await dbService.deleteEquipmentImage(eqId);
+      setMyEquipment(prev => prev.map(e => e.id === eqId ? { ...e, image_url: null } : e));
+    }
+  };
+
+  const handleAvatarFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarUploading(true);
+    try {
+      await uploadAvatar(file);
+    } catch (err) {
+      alert('Avatar upload failed: ' + err.message);
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
   const handleWithdrawApplication = async (appId) => {
     if (window.confirm('Withdraw this application?')) {
       await dbService.deleteApplication(appId);
@@ -134,24 +158,46 @@ export default function WorkerDashboard({ onOpenEquipmentModal, onOpenMessage })
       <div className="container">
         {/* Top Worker Profile Banner */}
         <div style={styles.topBanner}>
-          <div>
-            <div className="badge badge-yellow" style={{ marginBottom: '8px' }}>
-              <Wrench size={14} /> SKILLED LABOUR + TOOLS PORTAL
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div style={{ position: 'relative' }}>
+              {profile?.avatar_url ? (
+                <StorageImage 
+                  src={profile.avatar_url} 
+                  alt="Worker Avatar" 
+                  style={{ width: '64px', height: '64px', borderRadius: '50%', objectFit: 'cover', border: '3px solid #eab308' }}
+                />
+              ) : (
+                <div style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: '#fef08a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', fontWeight: '800', color: '#854d0e', border: '3px solid #eab308' }}>
+                  {(profile?.name || user?.email || 'W').charAt(0).toUpperCase()}
+                </div>
+              )}
+              <label 
+                style={{ position: 'absolute', bottom: '-4px', right: '-4px', backgroundColor: '#eab308', color: '#fff', padding: '5px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}
+                title="Upload Profile Picture"
+              >
+                <Upload size={13} />
+                <input type="file" accept="image/*" onChange={handleAvatarFile} style={{ display: 'none' }} disabled={avatarUploading} />
+              </label>
             </div>
-            <h1 style={styles.workerTitle}>
-              {workerName}
-            </h1>
-            <div style={styles.metaRow}>
-              <span><MapPin size={13} style={{ display: 'inline' }} /> {location}</span>
-              <span>•</span>
-              <span>Rate: ₹{dailyRate}/day</span>
-              <span>•</span>
-              <span style={{ 
-                color: availability === 'available' ? '#15803d' : '#ca8a04',
-                fontWeight: '700'
-              }}>
-                ● {availability === 'available' ? 'Available for Work' : availability === 'busy' ? 'Currently on Job' : 'Offline'}
-              </span>
+            <div>
+              <div className="badge badge-yellow" style={{ marginBottom: '4px' }}>
+                <Wrench size={14} /> SKILLED LABOUR + TOOLS PORTAL
+              </div>
+              <h1 style={styles.workerTitle}>
+                {workerName}
+              </h1>
+              <div style={styles.metaRow}>
+                <span><MapPin size={13} style={{ display: 'inline' }} /> {location}</span>
+                <span>•</span>
+                <span>Rate: ₹{dailyRate}/day</span>
+                <span>•</span>
+                <span style={{ 
+                  color: availability === 'available' ? '#15803d' : '#ca8a04',
+                  fontWeight: '700'
+                }}>
+                  ● {availability === 'available' ? 'Available for Work' : availability === 'busy' ? 'Currently on Job' : 'Offline'}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -332,10 +378,32 @@ export default function WorkerDashboard({ onOpenEquipmentModal, onOpenMessage })
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {myEquipment.map((eq) => (
-                    <div key={eq.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                      <div>
-                        <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>{eq.name}</div>
-                        <div style={{ fontSize: '11px', color: '#64748b' }}>{eq.category} • {eq.location}</div>
+                    <div key={eq.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', gap: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        {eq.image_url ? (
+                          <div style={{ position: 'relative' }}>
+                            <StorageImage 
+                              src={eq.image_url} 
+                              alt={eq.name} 
+                              style={{ width: '42px', height: '42px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                            />
+                            <button
+                              onClick={() => handleDeleteEquipmentImage(eq.id)}
+                              style={{ position: 'absolute', top: '-4px', right: '-4px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '50%', width: '14px', height: '14px', fontSize: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                              title="Delete photo from Storage"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{ width: '42px', height: '42px', borderRadius: '6px', backgroundColor: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Tractor size={20} color="#64748b" />
+                          </div>
+                        )}
+                        <div>
+                          <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>{eq.name}</div>
+                          <div style={{ fontSize: '11px', color: '#64748b' }}>{eq.category} • {eq.location}</div>
+                        </div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <div style={{ textAlign: 'right' }}>

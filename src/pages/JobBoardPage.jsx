@@ -13,8 +13,10 @@ import {
   Send,
   Briefcase,
   Layers,
-  Trash2
+  Trash2,
+  Paperclip
 } from 'lucide-react';
+import StorageImage from '../components/StorageImage';
 
 export default function JobBoardPage({ onOpenJobModal, onOpenAuth, onOpenMessage }) {
   const { user, currentRole, isAuthenticated } = useAuth();
@@ -212,6 +214,20 @@ export default function JobBoardPage({ onOpenJobModal, onOpenAuth, onOpenMessage
 
                   <h3 style={styles.jobTitle}>{job.title}</h3>
                   <p style={styles.jobDesc}>{job.description}</p>
+
+                  {job.attachment_url && (
+                    <div style={{ marginTop: '8px', marginBottom: '8px', display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '4px 10px', backgroundColor: '#f1f5f9', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <StorageImage 
+                        src={job.attachment_url} 
+                        alt="Attached field preview" 
+                        style={{ width: '28px', height: '28px', objectFit: 'cover', borderRadius: '4px' }} 
+                        fallbackSrc=""
+                      />
+                      <span style={{ fontSize: '12px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Paperclip size={12} /> Field Photo Attached
+                      </span>
+                    </div>
+                  )}
 
                   <div style={styles.metaWrap}>
                     <span><MapPin size={14} style={{ display: 'inline' }} /> {job.location}</span>

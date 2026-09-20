@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { dbService } from '../services/dbService';
+import { storageService } from '../services/storageService';
 
 const AuthContext = createContext(null);
 
@@ -204,6 +205,38 @@ export function AuthProvider({ children }) {
     return updated;
   };
 
+  // Upload user profile avatar to Supabase Storage "app-files" bucket
+  const uploadAvatar = async (file) => {
+    if (!user || !file) return null;
+    try {
+      const uploadRes = await storageService.uploadFile({
+        file,
+        userId: user.id,
+        featureName: 'avatar',
+        itemId: 'profile'
+      });
+      // Updates profile in DB and triggers cleanup of any previous avatar
+      const updated = await updateProfile({ avatar_url: uploadRes.path });
+      return updated;
+    } catch (err) {
+      console.error('Failed to upload avatar to Supabase Storage:', err);
+      throw err;
+    }
+  };
+
+  // Delete user profile avatar from Storage and DB
+  const deleteAvatar = async () => {
+    if (!user) return null;
+    try {
+      await dbService.deleteAvatar(user.id);
+      setProfile(prev => ({ ...prev, avatar_url: null }));
+      return true;
+    } catch (err) {
+      console.error('Failed to delete avatar:', err);
+      throw err;
+    }
+  };
+
   // Google OAuth Login via Supabase
   const signInWithGoogle = async () => {
     try {
@@ -246,6 +279,8 @@ export function AuthProvider({ children }) {
         signInWithGoogle,
         logout,
         updateProfile,
+        uploadAvatar,
+        deleteAvatar,
         isAuthenticated: !!user,
         currentRole
       }}

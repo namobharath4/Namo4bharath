@@ -103,6 +103,7 @@ CREATE TABLE IF NOT EXISTS public.jobs (
   duration_days INT DEFAULT 2,
   urgency TEXT DEFAULT 'medium',
   status TEXT DEFAULT 'OPEN',
+  attachment_url TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -147,6 +148,8 @@ CREATE TABLE IF NOT EXISTS public.messages (
   recipient_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   sender_name TEXT,
   content TEXT NOT NULL,
+  attachment_url TEXT,
+  attachment_name TEXT,
   is_read BOOLEAN DEFAULT false,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -388,3 +391,53 @@ CREATE POLICY "Reviewers can update own reviews"
 DROP POLICY IF EXISTS "Reviewers can delete own reviews" ON public.reviews;
 CREATE POLICY "Reviewers can delete own reviews" 
   ON public.reviews FOR DELETE USING (auth.uid() = reviewer_id);
+
+-- ============================================================================
+-- 12. SUPABASE STORAGE POLICIES FOR PRIVATE BUCKET "app-files"
+-- Structure: ${auth.uid()}/${featureName}/${itemId}/${uuid}.${ext}
+-- ============================================================================
+-- Ensure private bucket exists:
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('app-files', 'app-files', false)
+ON CONFLICT (id) DO NOTHING;
+
+-- Policy: Authenticated users can upload files into their own folder (${auth.uid()}/*)
+DROP POLICY IF EXISTS "Users can upload to own folder" ON storage.objects;
+CREATE POLICY "Users can upload to own folder" 
+  ON storage.objects FOR INSERT 
+  TO authenticated 
+  WITH CHECK (
+    bucket_id = 'app-files' AND 
+    (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+-- Policy: Authenticated users can view/download files in their own folder
+DROP POLICY IF EXISTS "Users can view own files" ON storage.objects;
+CREATE POLICY "Users can view own files" 
+  ON storage.objects FOR SELECT 
+  TO authenticated 
+  USING (
+    bucket_id = 'app-files' AND 
+    (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+-- Policy: Authenticated users can update files in their own folder
+DROP POLICY IF EXISTS "Users can update own files" ON storage.objects;
+CREATE POLICY "Users can update own files" 
+  ON storage.objects FOR UPDATE 
+  TO authenticated 
+  USING (
+    bucket_id = 'app-files' AND 
+    (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+-- Policy: Authenticated users can delete files in their own folder
+DROP POLICY IF EXISTS "Users can delete own files" ON storage.objects;
+CREATE POLICY "Users can delete own files" 
+  ON storage.objects FOR DELETE 
+  TO authenticated 
+  USING (
+    bucket_id = 'app-files' AND 
+    (storage.foldername(name))[1] = auth.uid()::text
+  );
+

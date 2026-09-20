@@ -18,11 +18,15 @@ import {
   Check,
   XCircle,
   Briefcase,
-  Trash2
+  Trash2,
+  Paperclip,
+  Upload
 } from 'lucide-react';
+import StorageImage from '../components/StorageImage';
 
 export default function FarmerDashboard({ onOpenJobModal, onOpenMessage }) {
-  const { user, profile, updateProfile } = useAuth();
+  const { user, profile, updateProfile, uploadAvatar, deleteAvatar } = useAuth();
+  const [avatarUploading, setAvatarUploading] = useState(false);
   
   // Real database states
   const [myJobs, setMyJobs] = useState([]);
@@ -114,6 +118,32 @@ export default function FarmerDashboard({ onOpenJobModal, onOpenMessage }) {
     }
   };
 
+  const handleDeleteJobAttachment = async (jobId) => {
+    if (window.confirm('Remove attached photo from this requirement?')) {
+      await dbService.deleteJobAttachment(jobId);
+      setMyJobs(prev => prev.map(j => j.id === jobId ? { ...j, attachment_url: null } : j));
+    }
+  };
+
+  const handleAvatarFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarUploading(true);
+    try {
+      await uploadAvatar(file);
+    } catch (err) {
+      alert('Avatar upload failed: ' + err.message);
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    if (window.confirm('Remove profile avatar?')) {
+      await deleteAvatar();
+    }
+  };
+
   const filteredWorkers = workers.filter(w => {
     if (!workerSearchTerm) return true;
     const term = workerSearchTerm.toLowerCase();
@@ -128,16 +158,38 @@ export default function FarmerDashboard({ onOpenJobModal, onOpenMessage }) {
       <div className="container">
         {/* Top Banner */}
         <div style={styles.topBanner}>
-          <div>
-            <div className="badge badge-green" style={{ marginBottom: '8px' }}>
-              <Sprout size={14} /> FARMER PORTAL
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div style={{ position: 'relative' }}>
+              {profile?.avatar_url ? (
+                <StorageImage 
+                  src={profile.avatar_url} 
+                  alt="Farmer Avatar" 
+                  style={{ width: '64px', height: '64px', borderRadius: '50%', objectFit: 'cover', border: '3px solid #16a34a' }}
+                />
+              ) : (
+                <div style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', fontWeight: '800', color: '#15803d', border: '3px solid #16a34a' }}>
+                  {(profile?.name || user?.email || 'F').charAt(0).toUpperCase()}
+                </div>
+              )}
+              <label 
+                style={{ position: 'absolute', bottom: '-4px', right: '-4px', backgroundColor: '#15803d', color: '#fff', padding: '5px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}
+                title="Upload Profile Picture"
+              >
+                <Upload size={13} />
+                <input type="file" accept="image/*" onChange={handleAvatarFile} style={{ display: 'none' }} disabled={avatarUploading} />
+              </label>
             </div>
-            <h1 style={styles.welcomeHeading}>
-              Welcome, {profile?.name || profile?.full_name || user?.email?.split('@')[0]}
-            </h1>
-            <p style={styles.welcomeSub}>
-              Manage your agricultural holdings, post acreage requirements, and connect with verified machinery operators.
-            </p>
+            <div>
+              <div className="badge badge-green" style={{ marginBottom: '4px' }}>
+                <Sprout size={14} /> FARMER PORTAL
+              </div>
+              <h1 style={styles.welcomeHeading}>
+                Welcome, {profile?.name || profile?.full_name || user?.email?.split('@')[0]}
+              </h1>
+              <p style={styles.welcomeSub}>
+                Manage your agricultural holdings, post acreage requirements, and connect with verified machinery operators.
+              </p>
+            </div>
           </div>
 
           <button 
@@ -352,6 +404,28 @@ export default function FarmerDashboard({ onOpenJobModal, onOpenMessage }) {
                           <span style={styles.statusBadge(job.status)}>{job.status}</span>
                         </div>
                         <h4 style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a' }}>{job.title}</h4>
+                        
+                        {job.attachment_url && (
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', margin: '6px 0', padding: '4px 8px', backgroundColor: '#f1f5f9', borderRadius: '6px' }}>
+                            <StorageImage 
+                              src={job.attachment_url} 
+                              alt="Job attachment" 
+                              style={{ width: '28px', height: '28px', borderRadius: '4px', objectFit: 'cover' }}
+                            />
+                            <span style={{ fontSize: '11px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <Paperclip size={12} /> Attachment
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteJobAttachment(job.id)}
+                              style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '11px', fontWeight: '600', padding: '0 4px' }}
+                              title="Delete attachment from Storage"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        )}
+
                         <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: '#64748b', marginTop: '6px', flexWrap: 'wrap' }}>
                           <span><MapPin size={12} style={{ display: 'inline' }} /> {job.location}</span>
                           <span><Calendar size={12} style={{ display: 'inline' }} /> {job.duration_days || 1} Days</span>

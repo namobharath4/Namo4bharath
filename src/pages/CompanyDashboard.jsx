@@ -16,11 +16,17 @@ import {
   Check,
   Package,
   ArrowRight,
-  Briefcase
+  Briefcase,
+  Trash2,
+  Upload,
+  Paperclip
 } from 'lucide-react';
+import { storageService } from '../services/storageService';
+import StorageImage from '../components/StorageImage';
 
 export default function CompanyDashboard({ onOpenJobModal, onOpenMessage }) {
-  const { user, profile, updateProfile } = useAuth();
+  const { user, profile, updateProfile, uploadAvatar, deleteAvatar } = useAuth();
+  const [avatarUploading, setAvatarUploading] = useState(false);
 
   const [companyJobs, setCompanyJobs] = useState([]);
   const [workers, setWorkers] = useState([]);
@@ -43,6 +49,9 @@ export default function CompanyDashboard({ onOpenJobModal, onOpenMessage }) {
   const [newProductName, setNewProductName] = useState('');
   const [newProductCategory, setNewProductCategory] = useState('Nutrients');
   const [newProductPrice, setNewProductPrice] = useState('');
+  const [productImageFile, setProductImageFile] = useState(null);
+  const [productImagePreview, setProductImagePreview] = useState('');
+  const [uploadingProduct, setUploadingProduct] = useState(false);
 
   // Operator Search
   const [searchFilter, setSearchFilter] = useState('');
@@ -68,6 +77,19 @@ export default function CompanyDashboard({ onOpenJobModal, onOpenMessage }) {
     }
   }
 
+  const handleAvatarFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarUploading(true);
+    try {
+      await uploadAvatar(file);
+    } catch (err) {
+      alert('Avatar upload failed: ' + err.message);
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
   const handleSaveProfile = async (e) => {
     e.preventDefault();
     await updateProfile({
@@ -80,22 +102,53 @@ export default function CompanyDashboard({ onOpenJobModal, onOpenMessage }) {
     setIsEditing(false);
   };
 
-  const handleAddProduct = (e) => {
+  const handleAddProduct = async (e) => {
     e.preventDefault();
     if (!newProductName || !newProductPrice) return;
-    setCatalogItems(prev => [
-      ...prev,
-      {
-        id: Date.now(),
-        name: newProductName,
-        category: newProductCategory,
-        mrp: Number(newProductPrice),
-        stock: 'In Stock'
+    setUploadingProduct(true);
+    try {
+      const productId = Date.now();
+      let imageUrl = null;
+
+      if (productImageFile && user) {
+        const uploadRes = await storageService.uploadFile({
+          file: productImageFile,
+          userId: user.id,
+          featureName: 'catalog',
+          itemId: productId.toString()
+        });
+        imageUrl = uploadRes.path;
       }
-    ]);
-    setNewProductName('');
-    setNewProductPrice('');
-    setShowAddProduct(false);
+
+      setCatalogItems(prev => [
+        ...prev,
+        {
+          id: productId,
+          name: newProductName,
+          category: newProductCategory,
+          mrp: Number(newProductPrice),
+          stock: 'In Stock',
+          image_url: imageUrl
+        }
+      ]);
+
+      setNewProductName('');
+      setNewProductPrice('');
+      setProductImageFile(null);
+      setProductImagePreview('');
+      setShowAddProduct(false);
+    } catch (err) {
+      alert('Failed to save product: ' + err.message);
+    } finally {
+      setUploadingProduct(false);
+    }
+  };
+
+  const handleDeleteProduct = async (item) => {
+    if (item.image_url) {
+      await storageService.deleteFile(item.image_url);
+    }
+    setCatalogItems(prev => prev.filter(p => p.id !== item.id));
   };
 
   const filteredWorkers = workers.filter(w => {
@@ -112,19 +165,41 @@ export default function CompanyDashboard({ onOpenJobModal, onOpenMessage }) {
       <div className="container">
         {/* Company Header Banner */}
         <div style={styles.headerBanner}>
-          <div>
-            <div className="badge badge-blue" style={{ marginBottom: '8px' }}>
-              <Building2 size={14} /> AGRI-ENTERPRISE WORKSPACE
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div style={{ position: 'relative' }}>
+              {profile?.avatar_url ? (
+                <StorageImage 
+                  src={profile.avatar_url} 
+                  alt="Company Logo" 
+                  style={{ width: '64px', height: '64px', borderRadius: '12px', objectFit: 'cover', border: '3px solid #0284c7' }}
+                />
+              ) : (
+                <div style={{ width: '64px', height: '64px', borderRadius: '12px', backgroundColor: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', fontWeight: '800', color: '#0284c7', border: '3px solid #0284c7' }}>
+                  {(companyName || user?.email || 'C').charAt(0).toUpperCase()}
+                </div>
+              )}
+              <label 
+                style={{ position: 'absolute', bottom: '-4px', right: '-4px', backgroundColor: '#0284c7', color: '#fff', padding: '5px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}
+                title="Upload Company Logo"
+              >
+                <Upload size={13} />
+                <input type="file" accept="image/*" onChange={handleAvatarFile} style={{ display: 'none' }} disabled={avatarUploading} />
+              </label>
             </div>
-            <h1 style={styles.companyTitle}>
-              {companyName}
-            </h1>
-            <div style={styles.metaRow}>
-              <span><ShieldCheck size={14} color="#0284c7" style={{ display: 'inline' }} /> CIN: {cin}</span>
-              <span>•</span>
-              <span>FCO Lic: {license}</span>
-              <span>•</span>
-              <span>HQ: {district}</span>
+            <div>
+              <div className="badge badge-blue" style={{ marginBottom: '4px' }}>
+                <Building2 size={14} /> AGRI-ENTERPRISE WORKSPACE
+              </div>
+              <h1 style={styles.companyTitle}>
+                {companyName}
+              </h1>
+              <div style={styles.metaRow}>
+                <span><ShieldCheck size={14} color="#0284c7" style={{ display: 'inline' }} /> CIN: {cin}</span>
+                <span>•</span>
+                <span>FCO Lic: {license}</span>
+                <span>•</span>
+                <span>HQ: {district}</span>
+              </div>
             </div>
           </div>
 
@@ -289,22 +364,73 @@ export default function CompanyDashboard({ onOpenJobModal, onOpenMessage }) {
                       />
                     </div>
                   </div>
-                  <button type="submit" className="btn btn-sm btn-primary" style={{ backgroundColor: '#0284c7', borderColor: '#0284c7' }}>
-                    Save Product to Catalog
+                  <div style={{ marginBottom: '8px' }}>
+                    <label style={styles.fieldLabel}>Product Image / Brochure (Optional)</label>
+                    <input 
+                      type="file" 
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setProductImageFile(file);
+                          setProductImagePreview(URL.createObjectURL(file));
+                        }
+                      }}
+                      className="form-input"
+                      style={{ padding: '6px' }}
+                    />
+                    {productImagePreview && (
+                      <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <img src={productImagePreview} alt="Preview" style={{ width: '32px', height: '32px', objectFit: 'cover', borderRadius: '4px' }} />
+                        <span style={{ fontSize: '11px', color: '#64748b' }}>{productImageFile?.name}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <button 
+                    type="submit" 
+                    disabled={uploadingProduct}
+                    className="btn btn-sm btn-primary" 
+                    style={{ backgroundColor: '#0284c7', borderColor: '#0284c7' }}
+                  >
+                    {uploadingProduct ? 'Saving Product...' : 'Save Product to Catalog'}
                   </button>
                 </form>
               )}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {catalogItems.map((item) => (
-                  <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                    <div>
-                      <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>{item.name}</div>
-                      <div style={{ fontSize: '11px', color: '#64748b' }}>{item.category}</div>
+                  <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', gap: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      {item.image_url ? (
+                        <StorageImage 
+                          src={item.image_url} 
+                          alt={item.name} 
+                          style={{ width: '36px', height: '36px', borderRadius: '6px', objectFit: 'cover', border: '1px solid #bae6fd' }}
+                        />
+                      ) : (
+                        <div style={{ width: '36px', height: '36px', borderRadius: '6px', backgroundColor: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Package size={18} color="#0284c7" />
+                        </div>
+                      )}
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>{item.name}</div>
+                        <div style={{ fontSize: '11px', color: '#64748b' }}>{item.category}</div>
+                      </div>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '14px', fontWeight: '800', color: '#0284c7' }}>₹{item.mrp}</div>
-                      <span className="badge badge-green" style={{ fontSize: '10px' }}>{item.stock}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '14px', fontWeight: '800', color: '#0284c7' }}>₹{item.mrp}</div>
+                        <span className="badge badge-green" style={{ fontSize: '10px' }}>{item.stock}</span>
+                      </div>
+                      <button 
+                        className="btn btn-sm btn-secondary" 
+                        style={{ padding: '6px', color: '#ef4444', borderColor: '#fecaca', backgroundColor: '#fff' }}
+                        title="Delete product and storage file"
+                        onClick={() => handleDeleteProduct(item)}
+                      >
+                        <Trash2 size={13} />
+                      </button>
                     </div>
                   </div>
                 ))}

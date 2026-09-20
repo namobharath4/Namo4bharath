@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { dbService } from '../services/dbService';
 import { useAuth } from '../context/AuthContext';
+import StorageImage from '../components/StorageImage';
 
 export default function LandingPage({ onOpenAuth, onNavigateTab, onSelectPortal }) {
   const { user, currentRole, isAuthenticated } = useAuth();
@@ -320,10 +321,11 @@ export default function LandingPage({ onOpenAuth, onNavigateTab, onSelectPortal 
             <div className="grid-4">
               {recentEquipment.map((eq) => (
                 <div key={eq.id} className="card" style={{ padding: '16px' }}>
-                  <img 
-                    src={eq.image_url || 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=400&auto=format&fit=crop&q=80'} 
+                  <StorageImage 
+                    src={eq.image_url} 
                     alt={eq.name} 
                     style={styles.eqImage}
+                    fallbackSrc="https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=400&auto=format&fit=crop&q=80"
                   />
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                     <span className="badge badge-yellow">{eq.category}</span>
