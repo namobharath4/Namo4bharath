@@ -17,7 +17,8 @@ import {
   Send, 
   MessageSquare,
   Sparkles,
-  ShieldCheck
+  ShieldCheck,
+  Trash2
 } from 'lucide-react';
 
 export default function WorkerDashboard({ onOpenEquipmentModal, onOpenMessage }) {
@@ -112,6 +113,20 @@ export default function WorkerDashboard({ onOpenEquipmentModal, onOpenMessage })
     const updatedApps = await dbService.getMyApplications(user.id);
     setMyApplications(updatedApps);
     setTimeout(() => setApplySuccess(''), 4000);
+  };
+
+  const handleDeleteEquipment = async (eqId) => {
+    if (window.confirm('Are you sure you want to remove this machinery listing?')) {
+      await dbService.deleteEquipment(eqId);
+      setMyEquipment(prev => prev.filter(e => e.id !== eqId));
+    }
+  };
+
+  const handleWithdrawApplication = async (appId) => {
+    if (window.confirm('Withdraw this application?')) {
+      await dbService.deleteApplication(appId);
+      setMyApplications(prev => prev.filter(a => a.id !== appId));
+    }
   };
 
   return (
@@ -322,9 +337,19 @@ export default function WorkerDashboard({ onOpenEquipmentModal, onOpenMessage })
                         <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>{eq.name}</div>
                         <div style={{ fontSize: '11px', color: '#64748b' }}>{eq.category} • {eq.location}</div>
                       </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '14px', fontWeight: '800', color: '#15803d' }}>₹{eq.daily_rate}/day</div>
-                        <span className="badge badge-green" style={{ fontSize: '10px' }}>Listed</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '14px', fontWeight: '800', color: '#15803d' }}>₹{eq.daily_rate}/day</div>
+                          <span className="badge badge-green" style={{ fontSize: '10px' }}>Listed</span>
+                        </div>
+                        <button 
+                          className="btn btn-sm btn-secondary" 
+                          style={{ padding: '6px', color: '#ef4444', borderColor: '#fecaca', backgroundColor: '#fff' }}
+                          title="Remove machinery listing"
+                          onClick={() => handleDeleteEquipment(eq.id)}
+                        >
+                          <Trash2 size={13} />
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -488,9 +513,21 @@ export default function WorkerDashboard({ onOpenEquipmentModal, onOpenMessage })
                         <div style={{ fontSize: '14px', fontWeight: '700' }}>Job ID: {app.job_id?.slice(0, 8)}...</div>
                         <div style={{ fontSize: '12px', color: '#64748b' }}>Proposed: ₹{Number(app.proposed_rate || 0).toLocaleString()} • "{app.pitch?.slice(0, 40)}..."</div>
                       </div>
-                      <span className={`badge ${app.status === 'ACCEPTED' ? 'badge-green' : app.status === 'REJECTED' ? 'badge-red' : 'badge-yellow'}`}>
-                        {app.status}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span className={`badge ${app.status === 'ACCEPTED' ? 'badge-green' : app.status === 'REJECTED' ? 'badge-red' : 'badge-yellow'}`}>
+                          {app.status}
+                        </span>
+                        {app.status === 'PENDING' && (
+                          <button 
+                            className="btn btn-sm btn-secondary" 
+                            style={{ padding: '6px', color: '#ef4444', borderColor: '#fecaca', backgroundColor: '#fff' }}
+                            title="Withdraw application"
+                            onClick={() => handleWithdrawApplication(app.id)}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>

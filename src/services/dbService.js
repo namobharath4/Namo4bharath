@@ -2,8 +2,8 @@ import { supabase } from '../supabaseClient';
 
 /**
  * Real Database Service for YUKTI Agricultural Platform
- * Connects directly to Supabase with graceful persistence for user-created data.
- * Zero mock data, zero fake users.
+ * Connects directly to Supabase with real CRUD operations, RLS security compatibility,
+ * and reliable local persistence fallback.
  */
 
 const STORAGE_KEY = 'yukti_real_db_store';
@@ -37,14 +37,18 @@ function saveLocalStore(store) {
 
 export const dbService = {
   // ==========================================================================
-  // 1. PROFILES & USERS
+  // 1. PROFILES & USER DATA
   // ==========================================================================
+  
+  /**
+   * Load user profile
+   */
   async getProfile(userId) {
     if (!userId) return null;
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('*, farmer_profiles(*), company_profiles(*), worker_profiles(*)')
+        .select('*')
         .eq('user_id', userId)
         .maybeSingle();
 
@@ -57,6 +61,9 @@ export const dbService = {
     return store.profiles.find(p => p.user_id === userId || p.id === userId) || null;
   },
 
+  /**
+   * Update or create user profile
+   */
   async updateProfile(userId, updates) {
     if (!userId) return null;
     let savedProfile = null;
@@ -68,7 +75,7 @@ export const dbService = {
           user_id: userId,
           ...updates,
           updated_at: new Date().toISOString()
-        })
+        }, { onConflict: 'user_id' })
         .select()
         .maybeSingle();
 
@@ -79,7 +86,7 @@ export const dbService = {
       console.warn('Supabase updateProfile error:', e.message);
     }
 
-    // Always update local store to ensure offline/schema-lag consistency
+    // Always update local store to ensure local consistency
     const store = getLocalStore();
     const idx = store.profiles.findIndex(p => p.user_id === userId || p.id === userId);
     const existing = idx >= 0 ? store.profiles[idx] : { user_id: userId };
@@ -95,15 +102,18 @@ export const dbService = {
     return savedProfile || merged;
   },
 
+  /**
+   * Search skilled workers & operators
+   */
   async searchWorkers({ skill, location, availability } = {}) {
     try {
-      let query = supabase.from('profiles').select('*, worker_profiles(*)').eq('role', 'skilled_worker');
+      let query = supabase.from('profiles').select('*').eq('role', 'skilled_worker');
       if (location) query = query.ilike('district', `%${location}%`);
       const { data, error } = await query;
       if (!error && data && data.length > 0) {
         return data.filter(w => {
           if (!skill) return true;
-          const skillsList = w.worker_profiles?.[0]?.skills || [];
+          const skillsList = w.skills || [];
           return skillsList.some(s => s.toLowerCase().includes(skill.toLowerCase()));
         });
       }
@@ -125,11 +135,15 @@ export const dbService = {
   },
 
   // ==========================================================================
-  // 2. JOBS SYSTEM
+  // 2. JOBS / REQUIREMENTS SYSTEM (CRUD)
   // ==========================================================================
+  
+  /**
+   * READ: Load all open agricultural requirements / jobs with filters
+   */
   async getJobs({ searchTerm, crop, urgency, status } = {}) {
     try {
-      let query = supabase.from('jobs').select('*, profiles:poster_id(*)').order('created_at', { ascending: false });
+      let query = supabase.from('jobs').select('*').order('created_at', { ascending: false });
       if (status && status !== 'all') {
         query = query.eq('status', status);
       }
@@ -173,6 +187,9 @@ export const dbService = {
     });
   },
 
+  /**
+   * READ: Load jobs posted by the logged-in user
+   */
   async getMyJobs(userId) {
     if (!userId) return [];
     try {
@@ -191,6 +208,9 @@ export const dbService = {
     return store.jobs.filter(j => j.poster_id === userId || j.posterId === userId);
   },
 
+  /**
+   * CREATE: Post a new agricultural requirement
+   */
   async createJob(jobData) {
     const record = {
       id: jobData.id || crypto.randomUUID(),
@@ -201,8 +221,12 @@ export const dbService = {
       description: jobData.description,
       crop: jobData.crop,
       location: jobData.location,
-      required_skills: Array.isArray(jobData.required_skills) ? jobData.required_skills : (jobData.required_skills || '').split(',').map(s => s.trim()).filter(Boolean),
-      required_equipment: Array.isArray(jobData.required_equipment) ? jobData.required_equipment : (jobData.required_equipment || '').split(',').map(s => s.trim()).filter(Boolean),
+      required_skills: Array.isArray(jobData.required_skills) 
+        ? jobData.required_skills 
+        : (jobData.required_skills || '').split(',').map(s => s.trim()).filter(Boolean),
+      required_equipment: Array.isArray(jobData.required_equipment) 
+        ? jobData.required_equipment 
+        : (jobData.required_equipment || '').split(',').map(s => s.trim()).filter(Boolean),
       workers_needed: Number(jobData.workers_needed) || 1,
       budget: Number(jobData.budget) || 0,
       rate_type: jobData.rate_type || 'per_day',
@@ -216,6 +240,10 @@ export const dbService = {
     try {
       const { data, error } = await supabase.from('jobs').insert([record]).select().maybeSingle();
       if (!error && data) {
+        // Also keep local store updated
+        const store = getLocalStore();
+        store.jobs.unshift(data);
+        saveLocalStore(store);
         return data;
       }
     } catch (e) {
@@ -237,25 +265,64 @@ export const dbService = {
     return record;
   },
 
-  async updateJobStatus(jobId, status) {
+  /**
+   * UPDATE: Update job status or fields
+   */
+  async updateJob(jobId, updates) {
+    const payload = { ...updates, updated_at: new Date().toISOString() };
+    let updatedRecord = null;
     try {
-      await supabase.from('jobs').update({ status, updated_at: new Date().toISOString() }).eq('id', jobId);
+      const { data, error } = await supabase
+        .from('jobs')
+        .update(payload)
+        .eq('id', jobId)
+        .select()
+        .maybeSingle();
+
+      if (!error && data) updatedRecord = data;
     } catch (e) {
-      console.warn('Supabase updateJobStatus error:', e.message);
+      console.warn('Supabase updateJob error:', e.message);
     }
 
     const store = getLocalStore();
-    const job = store.jobs.find(j => j.id === jobId);
-    if (job) {
-      job.status = status;
-      job.updated_at = new Date().toISOString();
+    const idx = store.jobs.findIndex(j => j.id === jobId);
+    if (idx >= 0) {
+      store.jobs[idx] = { ...store.jobs[idx], ...payload };
       saveLocalStore(store);
+      if (!updatedRecord) updatedRecord = store.jobs[idx];
     }
+    return updatedRecord;
+  },
+
+  async updateJobStatus(jobId, status) {
+    return this.updateJob(jobId, { status });
+  },
+
+  /**
+   * DELETE: Delete a job by its ID (auth poster only)
+   */
+  async deleteJob(jobId) {
+    try {
+      const { error } = await supabase.from('jobs').delete().eq('id', jobId);
+      if (error) console.warn('Supabase deleteJob error:', error.message);
+    } catch (e) {
+      console.warn('Supabase deleteJob error:', e.message);
+    }
+
+    const store = getLocalStore();
+    store.jobs = store.jobs.filter(j => j.id !== jobId);
+    store.applications = store.applications.filter(a => a.job_id !== jobId);
+    saveLocalStore(store);
+    return true;
   },
 
   // ==========================================================================
-  // 3. APPLICATIONS
+  // 3. JOB APPLICATIONS (CRUD)
   // ==========================================================================
+  
+  /**
+   * CREATE: Submit application to a job
+   */
   async applyToJob({ jobId, workerId, workerName, pitch, proposedRate }) {
     const application = {
       id: crypto.randomUUID(),
@@ -265,7 +332,8 @@ export const dbService = {
       pitch: pitch || '',
       proposed_rate: Number(proposedRate) || 0,
       status: 'PENDING',
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     };
 
     try {
@@ -293,11 +361,14 @@ export const dbService = {
     return application;
   },
 
+  /**
+   * READ: Load applications for a specific job
+   */
   async getApplicationsForJob(jobId) {
     try {
       const { data, error } = await supabase
         .from('job_applications')
-        .select('*, profiles:worker_id(*)')
+        .select('*')
         .eq('job_id', jobId)
         .order('created_at', { ascending: false });
 
@@ -310,6 +381,9 @@ export const dbService = {
     return store.applications.filter(a => a.job_id === jobId);
   },
 
+  /**
+   * READ: Load applications submitted by logged-in worker
+   */
   async getMyApplications(workerId) {
     try {
       const { data, error } = await supabase
@@ -327,9 +401,15 @@ export const dbService = {
     return store.applications.filter(a => a.worker_id === workerId);
   },
 
+  /**
+   * UPDATE: Update application status (ACCEPTED, REJECTED, SHORTLISTED)
+   */
   async updateApplicationStatus(applicationId, newStatus) {
     try {
-      await supabase.from('job_applications').update({ status: newStatus }).eq('id', applicationId);
+      await supabase
+        .from('job_applications')
+        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .eq('id', applicationId);
     } catch (e) {
       console.warn('Supabase updateApplicationStatus error:', e.message);
     }
@@ -350,12 +430,33 @@ export const dbService = {
     }
   },
 
+  /**
+   * DELETE: Withdraw / cancel an application
+   */
+  async deleteApplication(applicationId) {
+    try {
+      const { error } = await supabase.from('job_applications').delete().eq('id', applicationId);
+      if (error) console.warn('Supabase deleteApplication error:', error.message);
+    } catch (e) {
+      console.warn('Supabase deleteApplication error:', e.message);
+    }
+
+    const store = getLocalStore();
+    store.applications = store.applications.filter(a => a.id !== applicationId);
+    saveLocalStore(store);
+    return true;
+  },
+
   // ==========================================================================
-  // 4. EQUIPMENT & MACHINERY
+  // 4. EQUIPMENT & MACHINERY FLEET (CRUD)
   // ==========================================================================
+  
+  /**
+   * READ: Load available machinery with filters
+   */
   async getEquipment({ category, location, operatorIncluded } = {}) {
     try {
-      let query = supabase.from('equipment').select('*, profiles:owner_id(*)').eq('is_available', true).order('created_at', { ascending: false });
+      let query = supabase.from('equipment').select('*').eq('is_available', true).order('created_at', { ascending: false });
       if (category && category !== 'all') {
         query = query.eq('category', category);
       }
@@ -386,6 +487,9 @@ export const dbService = {
     });
   },
 
+  /**
+   * READ: Load machinery owned by the logged-in user
+   */
   async getMyEquipment(ownerId) {
     if (!ownerId) return [];
     try {
@@ -399,9 +503,12 @@ export const dbService = {
     return store.equipment.filter(e => e.owner_id === ownerId || e.ownerId === ownerId);
   },
 
+  /**
+   * CREATE: List new machinery for rent
+   */
   async createEquipment(item) {
     const record = {
-      id: crypto.randomUUID(),
+      id: item.id || crypto.randomUUID(),
       owner_id: item.owner_id,
       owner_name: item.owner_name,
       name: item.name,
@@ -415,12 +522,18 @@ export const dbService = {
       specs: item.specs || '',
       image_url: item.image_url || 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=600&auto=format&fit=crop&q=80',
       is_available: true,
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     };
 
     try {
       const { data, error } = await supabase.from('equipment').insert([record]).select().maybeSingle();
-      if (!error && data) return data;
+      if (!error && data) {
+        const store = getLocalStore();
+        store.equipment.unshift(data);
+        saveLocalStore(store);
+        return data;
+      }
     } catch (e) {
       console.warn('Supabase createEquipment error:', e.message);
     }
@@ -439,9 +552,59 @@ export const dbService = {
     return record;
   },
 
+  /**
+   * UPDATE: Update equipment details or availability
+   */
+  async updateEquipment(equipmentId, updates) {
+    const payload = { ...updates, updated_at: new Date().toISOString() };
+    let updatedRecord = null;
+    try {
+      const { data, error } = await supabase
+        .from('equipment')
+        .update(payload)
+        .eq('id', equipmentId)
+        .select()
+        .maybeSingle();
+
+      if (!error && data) updatedRecord = data;
+    } catch (e) {
+      console.warn('Supabase updateEquipment error:', e.message);
+    }
+
+    const store = getLocalStore();
+    const idx = store.equipment.findIndex(e => e.id === equipmentId);
+    if (idx >= 0) {
+      store.equipment[idx] = { ...store.equipment[idx], ...payload };
+      saveLocalStore(store);
+      if (!updatedRecord) updatedRecord = store.equipment[idx];
+    }
+    return updatedRecord;
+  },
+
+  /**
+   * DELETE: Delete equipment listing (owner only)
+   */
+  async deleteEquipment(equipmentId) {
+    try {
+      const { error } = await supabase.from('equipment').delete().eq('id', equipmentId);
+      if (error) console.warn('Supabase deleteEquipment error:', error.message);
+    } catch (e) {
+      console.warn('Supabase deleteEquipment error:', e.message);
+    }
+
+    const store = getLocalStore();
+    store.equipment = store.equipment.filter(e => e.id !== equipmentId);
+    saveLocalStore(store);
+    return true;
+  },
+
   // ==========================================================================
-  // 5. MESSAGING & NOTIFICATIONS
+  // 5. MESSAGING & NOTIFICATIONS (CRUD)
   // ==========================================================================
+  
+  /**
+   * READ: Load conversation messages between two users
+   */
   async getMessages(userId, targetUserId) {
     if (!userId) return [];
     try {
@@ -463,6 +626,9 @@ export const dbService = {
     );
   },
 
+  /**
+   * CREATE: Send a direct message
+   */
   async sendMessage({ senderId, recipientId, senderName, content }) {
     const message = {
       id: crypto.randomUUID(),
@@ -497,6 +663,9 @@ export const dbService = {
     return message;
   },
 
+  /**
+   * READ: Load notifications for logged-in user
+   */
   async getNotifications(userId) {
     if (!userId) return [];
     try {
@@ -515,6 +684,9 @@ export const dbService = {
     return store.notifications.filter(n => n.user_id === userId);
   },
 
+  /**
+   * CREATE: Create notification
+   */
   async createNotification({ user_id, title, message, type = 'info' }) {
     if (!user_id) return null;
     const notif = {
@@ -539,15 +711,53 @@ export const dbService = {
     return notif;
   },
 
+  /**
+   * UPDATE: Mark notification as read
+   */
+  async markNotificationAsRead(notificationId) {
+    try {
+      await supabase.from('notifications').update({ is_read: true }).eq('id', notificationId);
+    } catch (e) {
+      console.warn('Supabase markNotificationAsRead error:', e.message);
+    }
+
+    const store = getLocalStore();
+    const notif = store.notifications.find(n => n.id === notificationId);
+    if (notif) {
+      notif.is_read = true;
+      saveLocalStore(store);
+    }
+  },
+
+  /**
+   * DELETE: Delete notification
+   */
+  async deleteNotification(notificationId) {
+    try {
+      await supabase.from('notifications').delete().eq('id', notificationId);
+    } catch (e) {
+      console.warn('Supabase deleteNotification error:', e.message);
+    }
+
+    const store = getLocalStore();
+    store.notifications = store.notifications.filter(n => n.id !== notificationId);
+    saveLocalStore(store);
+    return true;
+  },
+
   // ==========================================================================
-  // 6. REVIEWS & RATINGS
+  // 6. REVIEWS & RATINGS (CRUD)
   // ==========================================================================
+  
+  /**
+   * READ: Load reviews for a user
+   */
   async getReviewsForUser(userId) {
     if (!userId) return [];
     try {
       const { data, error } = await supabase
         .from('reviews')
-        .select('*, reviewer:reviewer_id(*)')
+        .select('*')
         .eq('reviewee_id', userId)
         .order('created_at', { ascending: false });
 
@@ -560,6 +770,9 @@ export const dbService = {
     return store.reviews.filter(r => r.reviewee_id === userId);
   },
 
+  /**
+   * CREATE: Submit review
+   */
   async submitReview({ jobId, reviewerId, revieweeId, rating, comment, reviewerName }) {
     const review = {
       id: crypto.randomUUID(),

@@ -10,7 +10,8 @@ import {
   ShieldCheck, 
   Filter,
   MessageSquare,
-  Sparkles
+  Sparkles,
+  Trash2
 } from 'lucide-react';
 
 export default function MarketplacePage({ onOpenEquipmentModal, onOpenAuth, onOpenMessage }) {
@@ -47,6 +48,13 @@ export default function MarketplacePage({ onOpenEquipmentModal, onOpenAuth, onOp
   const handleSearchSubmit = (e) => {
     e.preventDefault();
     fetchEquipment();
+  };
+
+  const handleDeleteEquipment = async (equipId) => {
+    if (window.confirm('Are you sure you want to delete this machinery listing?')) {
+      await dbService.deleteEquipment(equipId);
+      setEquipmentList(prev => prev.filter(e => e.id !== equipId));
+    }
   };
 
   const categories = [
@@ -192,12 +200,24 @@ export default function MarketplacePage({ onOpenEquipmentModal, onOpenAuth, onOp
                     <span style={{ fontSize: '11px', color: '#64748b' }}>Rate per Day</span>
                   </div>
 
-                  <button 
-                    className="btn btn-primary"
-                    onClick={() => onOpenMessage(eq.owner_name || 'Equipment Owner')}
-                  >
-                    <MessageSquare size={14} /> Book / Rent
-                  </button>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <button 
+                      className="btn btn-primary"
+                      onClick={() => onOpenMessage(eq.owner_name || 'Equipment Owner')}
+                    >
+                      <MessageSquare size={14} /> Book / Rent
+                    </button>
+                    {user && (user.id === eq.owner_id || user.id === eq.ownerId) && (
+                      <button 
+                        className="btn btn-secondary"
+                        style={{ padding: '8px', color: '#ef4444', borderColor: '#fecaca', backgroundColor: '#fff' }}
+                        title="Delete machinery listing"
+                        onClick={() => handleDeleteEquipment(eq.id)}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}

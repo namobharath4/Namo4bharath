@@ -12,7 +12,8 @@ import {
   CheckCircle2, 
   Send,
   Briefcase,
-  Layers
+  Layers,
+  Trash2
 } from 'lucide-react';
 
 export default function JobBoardPage({ onOpenJobModal, onOpenAuth, onOpenMessage }) {
@@ -83,6 +84,13 @@ export default function JobBoardPage({ onOpenJobModal, onOpenAuth, onOpenMessage
     setSelectedJobForApply(null);
     setPitch('');
     setTimeout(() => setApplicationSuccess(''), 4000);
+  };
+
+  const handleDeleteJob = async (jobId) => {
+    if (window.confirm('Are you sure you want to delete this agricultural requirement?')) {
+      await dbService.deleteJob(jobId);
+      setJobs(prev => prev.filter(j => j.id !== jobId));
+    }
   };
 
   return (
@@ -220,7 +228,7 @@ export default function JobBoardPage({ onOpenJobModal, onOpenAuth, onOpenMessage
                     <span style={{ fontSize: '12px', color: '#64748b' }}>Estimated Budget</span>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '8px' }}>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <button 
                       className="btn btn-primary"
                       onClick={() => handleApplyClick(job)}
@@ -233,6 +241,16 @@ export default function JobBoardPage({ onOpenJobModal, onOpenAuth, onOpenMessage
                     >
                       Inquire
                     </button>
+                    {user && (user.id === job.poster_id || user.id === job.posterId) && (
+                      <button 
+                        className="btn btn-secondary"
+                        style={{ padding: '8px', color: '#ef4444', borderColor: '#fecaca', backgroundColor: '#fff' }}
+                        title="Delete your requirement"
+                        onClick={() => handleDeleteJob(job.id)}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

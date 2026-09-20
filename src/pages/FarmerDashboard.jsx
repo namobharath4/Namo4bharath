@@ -17,7 +17,8 @@ import {
   Edit2,
   Check,
   XCircle,
-  Briefcase
+  Briefcase,
+  Trash2
 } from 'lucide-react';
 
 export default function FarmerDashboard({ onOpenJobModal, onOpenMessage }) {
@@ -100,6 +101,17 @@ export default function FarmerDashboard({ onOpenJobModal, onOpenMessage }) {
   const handleApplicationDecision = async (appId, decision) => {
     await dbService.updateApplicationStatus(appId, decision);
     setJobApplications(prev => prev.map(a => a.id === appId ? { ...a, status: decision } : a));
+  };
+
+  const handleDeleteJob = async (jobId) => {
+    if (window.confirm('Delete this agricultural requirement?')) {
+      await dbService.deleteJob(jobId);
+      setMyJobs(prev => prev.filter(j => j.id !== jobId));
+      if (selectedJobForApps?.id === jobId) {
+        setSelectedJobForApps(null);
+        setJobApplications([]);
+      }
+    }
   };
 
   const filteredWorkers = workers.filter(w => {
@@ -370,6 +382,14 @@ export default function FarmerDashboard({ onOpenJobModal, onOpenMessage }) {
                             Close
                           </button>
                         )}
+                        <button 
+                          className="btn btn-sm btn-secondary"
+                          style={{ color: '#ef4444', borderColor: '#fecaca', backgroundColor: '#fff' }}
+                          title="Delete requirement"
+                          onClick={() => handleDeleteJob(job.id)}
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     </div>
                   ))}
