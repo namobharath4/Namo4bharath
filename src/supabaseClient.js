@@ -17,3 +17,16 @@ const SUPABASE_PUBLIC_KEY =
 // Export initialized Supabase client
 export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLIC_KEY);
 
+/**
+ * Google login function using Supabase OAuth.
+ * Initiates the Google OAuth sign-in flow via Supabase client.
+ */
+export const signInWithGoogle = async (options = {}) => {
+  return await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: window.location.origin,
+      ...options,
+    },
+  });
+};

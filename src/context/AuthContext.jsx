@@ -204,6 +204,24 @@ export function AuthProvider({ children }) {
     return updated;
   };
 
+  // Google OAuth Login via Supabase
+  const signInWithGoogle = async () => {
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin,
+        },
+      });
+      if (error) {
+        return { success: false, error: error.message };
+      }
+      return { success: true, data };
+    } catch (err) {
+      return { success: false, error: err.message || 'Google sign-in failed.' };
+    }
+  };
+
   // Real Supabase Logout
   const logout = async () => {
     try {
@@ -225,6 +243,7 @@ export function AuthProvider({ children }) {
         loading,
         login,
         signUp,
+        signInWithGoogle,
         logout,
         updateProfile,
         isAuthenticated: !!user,

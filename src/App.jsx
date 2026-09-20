@@ -13,9 +13,20 @@ import AuthModal from './components/AuthModal';
 import JobPostModal from './components/JobPostModal';
 import EquipmentModal from './components/EquipmentModal';
 import MessageDrawer from './components/MessageDrawer';
+import SignIn from './SignIn';
+import SignUp from './SignUp';
 
 export default function App() {
   const { user, currentRole } = useAuth();
+  const pathname = window.location.pathname;
+
+  if (pathname === '/login' || pathname === '/signin') {
+    return <SignIn />;
+  }
+
+  if (pathname === '/signup') {
+    return <SignUp />;
+  }
   
   // Navigation tab: 'landing' | 'dashboard' | 'jobs' | 'marketplace' | 'admin'
   const [activeTab, setActiveTab] = useState('landing');
